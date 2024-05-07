@@ -182,7 +182,7 @@ def train_model(model, train_loader, val_loader, epochs):
         # logger.info(f'epoch = {epoch}, val_loss = {val_loss}, spearman_val_corr = {spearman_val_corr}, spearman_val_p = {spearman_val_p}, test_loss = {test_loss}, spearman_test_corr = {spearman_test_corr}, spearman_test_p = {spearman_test_p}')
         # list_of_rows.append({'epoch': epoch, 'val_loss': val_loss, 'spearman_val_corr': spearman_val_corr, 'spearman_val_p': spearman_val_p, 'test_loss': test_loss, 'spearman_test_corr': spearman_test_corr, 'spearman_test_p': spearman_test_p})
         
-        torch.save(model.state_dict(), os.path.join('./', f"checkpoint_{epoch}.pt"))
+        # torch.save(model.state_dict(), os.path.join('./', f"checkpoint_{epoch}.pt"))
     return model
 
     

@@ -4,7 +4,7 @@ from model.mh_attention import MultiHeadAttention
 from model.embed_layer import Embedding, PositionalEncoding
 
 
-class TransformerBlock(nn.Module):
+class Encoder(nn.Module):
 
     def __init__(self,
                  embed_dim=512,
@@ -20,9 +20,9 @@ class TransformerBlock(nn.Module):
         :param expansion_factor: the factor that determines the output dimension of the feed forward layer
         :param dropout: probability dropout (between 0 and 1)
         """
-        super(TransformerBlock, self).__init__()
+        super(Encoder, self).__init__()
 
-        self.attention = MultiHeadAttention(embed_dim, heads)  # the multi-head attention
+        self.attention = MultiHeadAttention(embed_dim, heads, dropout)  # the multi-head attention
         self.norm = nn.LayerNorm(embed_dim)  # the normalization layer
 
         # The fully connected feed-forward layer, 
@@ -36,15 +36,15 @@ class TransformerBlock(nn.Module):
         # Dropout to prevent overfitting
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, key, query, value, mask=None):
+    def forward(self,x, mask=None):
         #################### Multi-Head Attention ####################
         # first, pass the key, query and value through the multi head attention layer
-        attention_out = self.attention(key, query, value, mask)  # e.g.: 32x10x512
+        attention_out = self.attention(x, mask=None)  # e.g.: 32x10x512
 
         ##################### Add & Norm Layer ######################
         # then add the residual connection
         # by adding input to output of attention layer
-        attention_out = attention_out + value  # e.g.: 32x10x512
+        attention_out = attention_out + x  # e.g.: 32x10x512
 
         # after that we normalize and use dropout
         attention_norm = self.dropout(self.norm(attention_out))  # e.g.: 32x10x512
@@ -63,7 +63,7 @@ class TransformerBlock(nn.Module):
         return fc_norm
 
 
-class Encoder(nn.Module):
+class EncoderBlock(nn.Module):
 
     def __init__(self,
                  seq_len,
@@ -86,7 +86,7 @@ class Encoder(nn.Module):
         :param heads: the number of heads in each encoder
         :param dropout: probability dropout (between 0 and 1)
         """
-        super(Encoder, self).__init__()
+        super(EncoderBlock, self).__init__()
         # define the embedding: (vocabulary size x embedding dimension)
         self.embedding = Embedding(vocab_size, embed_dim)
         # define the positional encoding: (embedding dimension x sequence length)
@@ -94,7 +94,7 @@ class Encoder(nn.Module):
 
         # define the set of blocks
         # so we will have 'num_blocks' stacked on top of each other
-        self.blocks = replicate(TransformerBlock(embed_dim, heads, expansion_factor, dropout), num_blocks)
+        self.blocks = replicate(Encoder(embed_dim, heads, expansion_factor, dropout), num_blocks)
 
     def forward(self, x):
         out = self.positional_encoder(self.embedding(x))

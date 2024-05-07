@@ -103,22 +103,21 @@ def batch_iterator(dataset):
     for i in range(0, len(dataset), batch_size):
         yield dataset[i : i + batch_size]
 
-def BPE_embed(seqs, vocab_size=2000, max_length=220):
+def BPE_embed(seqs, chr_index, vocab_size=2000):
     
-    tokenizer_path = os.path.join('./', "tokenizer_BPE.json")
+    tokenizer_path = os.path.join('./', "tokenizer_BPE" + str(chr_index) +".json")
     if not os.path.exists(tokenizer_path):
-        print('Tokenizer BPE is not exited, create BPE tokenize')
+        print('Tokenizer BPE {} is not exited, create BPE tokenize'.format(chr_index))
         # Create (training) new tokenizer from the dataset
         # print(batch_iterator(seqs))
         tokenizer = train_tokenizer(batch_iterator(seqs))
-        tokenizer.enable_padding(length=max_length) #padding to max_len
-        
+        # tokenizer.enable_padding(length=max_length) # padding to max_len
 
         # Saving trained tokenizer to the file path
         tokenizer.save(tokenizer_path) # dictionary of {"G": 1, "A": 2, ....}
         # print(tokenizer.get_vocab_size()) # get vocab_size
     else:
-        print('Tokenizer BPE is already created, just load it')
+        print('Tokenizer BPE {} is already created, just load it'.format(chr_index))
         tokenizer = Tokenizer.from_file(tokenizer_path) # If the tokenizer already exist, we load it
     
     return tokenizer # Returns the loaded tokenizer or the trained tokenizer
@@ -135,13 +134,22 @@ def choose_max_length(X,tokenizer):
 
 # Tokenizing data
 # by assign idices to each token
-def encode(X, tokenizer):
+def encode(X, tokenizer, max_length):
     result = []
-    for x in X: #loop each sample in data(i.e. X_train ['SK GE EL FT G.', '...',...])
-        ids = tokenizer.encode(x).ids #assign idices to each token[13, 29, 5, 52, 18]  + padding
-        # if len(ids) > max_length:
-        #     ids = ids[:max_length] # trunct sequences if len(sample)>max_len
+    tokenizer.enable_padding(length=max_length)
+    # loop each sample in data(i.e. X_train ['SK GE EL FT G.', '...',...])
+    for x in X:
+
+        # assign idices to each token[13, 29, 5, 52, 18] + padding
+        ids = tokenizer.encode(x).ids 
+
+        if len(ids) > max_length:
+            ids = ids[:max_length] # trunct sequences if len(sample)>max_len
+        # else:
+        #     tokenizer.enable_padding(length=max_length)
+
         result.append(ids)
+
     return result
 # seqs = encode(seqs)
 # return seqs

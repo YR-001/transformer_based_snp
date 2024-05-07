@@ -75,7 +75,7 @@ def split_train_test_data(datapath, type):
 #  2. Split data into each chromosome
 # -------------------------------------------------------------
 
-def split_into_chromosome(datapath, type):
+def split_into_chromosome_train(datapath, type):
 
     X_train = pd.read_csv(datapath + '/data/pheno' + str(type) + '/x_train.csv')
 

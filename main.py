@@ -123,15 +123,15 @@ if __name__ == '__main__':
     print('---------------------------------------------------------')
     # print('Tuning MLP with dataset pheno-{}, minmax={}, standard={}, pcafit={}'.format(dataset, minmax_scale, standa_scale, pca_fitting))
     print('---------------------------------------------------------\n')
-    X_chr1_train, X_chr2_train, X_chr3_train, X_chr4_train, X_chr5_train = split_into_chromosome(datapath, dataset)
+    X_chr1_train, X_chr2_train, X_chr3_train, X_chr4_train, X_chr5_train = split_into_chromosome_train(datapath, dataset)
     y_train, X_test, y_test= load_split_data(datapath, dataset)
 
     # Tokenize data
-    tokenized_chr1_seq = snp_tokenizer(tokenize_type, seqs=X_chr1_train, kmer=kmer)
-    tokenized_chr2_seq = snp_tokenizer(tokenize_type, seqs=X_chr2_train, kmer=kmer)
-    tokenized_chr3_seq = snp_tokenizer(tokenize_type, seqs=X_chr3_train, kmer=kmer)
-    tokenized_chr4_seq = snp_tokenizer(tokenize_type, seqs=X_chr4_train, kmer=kmer)
-    tokenized_chr5_seq = snp_tokenizer(tokenize_type, seqs=X_chr5_train, kmer=kmer)
+    # tokenized_chr1_seq = snp_tokenizer(tokenize_type, seqs=X_chr1_train, kmer=kmer)
+    # tokenized_chr2_seq = snp_tokenizer(tokenize_type, seqs=X_chr2_train, kmer=kmer)
+    # tokenized_chr3_seq = snp_tokenizer(tokenize_type, seqs=X_chr3_train, kmer=kmer)
+    # tokenized_chr4_seq = snp_tokenizer(tokenize_type, seqs=X_chr4_train, kmer=kmer)
+    # tokenized_chr5_seq = snp_tokenizer(tokenize_type, seqs=X_chr5_train, kmer=kmer)
 
     # Embed data
     # a. Embed token using index
@@ -139,20 +139,41 @@ if __name__ == '__main__':
     # b. Embed token using Word2vec
     # embedded_seq = Word2vec_embed(tokenized_chr1_seq)
     # c. Embed token using BPE
-    X_chr1_tokenizer = BPE_embed(X_chr1_train)
-    # print(X_chr1_tokenizer.get_vocab_size())
+    X_chr1_tokenizer = BPE_embed(X_chr1_train, 1)
+    X_chr2_tokenizer = BPE_embed(X_chr2_train, 2)
+    X_chr3_tokenizer = BPE_embed(X_chr3_train, 3)
+    X_chr4_tokenizer = BPE_embed(X_chr4_train, 4)
+    X_chr5_tokenizer = BPE_embed(X_chr5_train, 5)
 
-    # choose_max_length(X_chr1_train, X_chr1_tokenizer) #218 # set max_len 220
+    #Vocab_size is the same, 30000
+    # x1_vocab = print(X_chr1_tokenizer.get_vocab_size())
+    # x2_vocab = print(X_chr2_tokenizer.get_vocab_size())
+    # x3_vocab = print(X_chr3_tokenizer.get_vocab_size())
+    # x4_vocab = print(X_chr4_tokenizer.get_vocab_size())
+    # x5_vocab = print(X_chr5_tokenizer.get_vocab_size())
 
-    embedded_X_chr1 = encode(X_chr1_train, X_chr1_tokenizer) # assign idices to each token[13, 29, 5, 52, 18, ...]
-    # print(embedded_X_chr1[0])
+
+    # x1 = choose_max_length(X_chr1_train, X_chr1_tokenizer)  # max_len = 218 
+    # x2 =choose_max_length(X_chr1_train, X_chr2_tokenizer)   # max_len = 560 
+    # x3= choose_max_length(X_chr1_train, X_chr3_tokenizer)   # max_len = 545 
+    # x4 =choose_max_length(X_chr1_train, X_chr4_tokenizer)   # max_len = 548 
+    # x5 =choose_max_length(X_chr1_train, X_chr5_tokenizer)   # max_len = 535 
+
+
+    embedded_X_chr1 = np.array(encode(X_chr1_train, X_chr1_tokenizer, 218)) # assign idices to each token[13, 29, 5, 52, 18, ...]
+    embedded_X_chr2 = np.array(encode(X_chr2_train, X_chr1_tokenizer, 560))
+    embedded_X_chr3 = np.array(encode(X_chr3_train, X_chr1_tokenizer, 545))
+    embedded_X_chr4 = np.array(encode(X_chr4_train, X_chr1_tokenizer, 548))
+    embedded_X_chr5 = np.array(encode(X_chr5_train, X_chr1_tokenizer, 535))
+    
+    X_train = np.concatenate((embedded_X_chr1, embedded_X_chr2, embedded_X_chr3, embedded_X_chr4, embedded_X_chr5), axis=1)
     
     # transform to tensor
-    tensor_y = torch.Tensor(y_train).view(len(y_train),1) #torch.Size([450, 1])
-    embedded_X_chr1 = torch.LongTensor(embedded_X_chr1)
-    # print(embedded_X_chr1.shape)    # torch.Size([450, 220])
+    tensor_y = torch.Tensor(y_train).view(len(y_train), 1)
+    tensor_X = torch.LongTensor(X_train)
+    print(tensor_X.shape)
     
-    seq_len = embedded_X_chr1.shape[1]
+    seq_len = tensor_X.shape[1]
     src_vocab_size = X_chr1_tokenizer.get_vocab_size()
 
     # test = Test_Embedding_Positional(embedded_X_chr1, X_chr1_tokenizer.get_vocab_size(), seq_len)
@@ -165,12 +186,12 @@ if __name__ == '__main__':
     # print('Shape',test_transformer.shape) #torch.Size([450, 1])
 
     # train-test split for evaluation of the model
-    X_train_chr1, X_val_chr1, y_train, y_val = train_test_split(embedded_X_chr1, tensor_y, train_size=0.7, shuffle=True)
+    X_train, X_val, y_train, y_val = train_test_split(tensor_X, tensor_y, train_size=0.7, shuffle=True)
 
     # Dataloader
-    train_loader = DataLoader(dataset=list(zip(X_train_chr1, y_train)), batch_size=8, shuffle=True)
-    val_loader = DataLoader(dataset=list(zip(X_val_chr1, y_val)), batch_size=8, shuffle=True)
-
+    train_loader = DataLoader(dataset=list(zip(X_train, y_train)), batch_size=45, shuffle=True)
+    val_loader = DataLoader(dataset=list(zip(X_val, y_val)), batch_size=45, shuffle=True)
+    
     model = TransformerSNP(src_vocab_size, 
                            seq_len,
                            embed_dim=512,
@@ -182,6 +203,7 @@ if __name__ == '__main__':
     trained_model = train_model(model, train_loader, val_loader, epochs=2)
 
     y_pred = predict(model, val_loader)
+
     # collect mse, r2, explained variance
     test_mse = sklearn.metrics.mean_squared_error(y_true=y_val, y_pred=y_pred)
     test_exp_variance = sklearn.metrics.explained_variance_score(y_true=y_val, y_pred=y_pred)
@@ -194,10 +216,7 @@ if __name__ == '__main__':
 
     # train_dataset = dataset_tensor(embedded_X_chr1, y_train)
     exit(1)
+
     # best_params = tuning_MLP(datapath, X_train, y_train, data_variants, training_params_dict, device)
     # evaluate_result_MLP(datapath, X_train, y_train, X_test, y_test, best_params, data_variants, device)
 
-
-
-
-    
