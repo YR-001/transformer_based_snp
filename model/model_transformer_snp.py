@@ -78,78 +78,35 @@ class Pooling_Transformer_output(torch.nn.Module):
 
     def forward(self, x):
         return torch.mean(x, dim=1)
-
-# Processing each chromosome and concatenate it into 1
-class Split_concat_Chromosome(torch.nn.Module):
-    def __init__(self):
-        super(Split_concat_Chromosome, self).__init__()
-    
-    def forward(self, x):
-        # split the source to encode different parts of the chrobosome
-        splitted_sources = torch.tensor_split(x, [218, 778, 1323, 1871], dim=1)
-        enc_out0 = splitted_sources[0]
-        enc_out1 = splitted_sources[1]
-        enc_out2 = splitted_sources[2]
-        enc_out3 = splitted_sources[3]
-        enc_out4 = splitted_sources[4]
-        return enc_out0, enc_out1, enc_out2, enc_out3, enc_out4
-        # print('Shape of src',source.shape)
-        # encode each part
-        enc_out0 = self.encoder(splitted_sources[0])
-        enc_out1 = self.encoder(splitted_sources[1])
-        enc_out2 = self.encoder(splitted_sources[2])
-        enc_out3 = self.encoder(splitted_sources[3])
-        enc_out4 = self.encoder(splitted_sources[4])
-        
-        # print('Shape of enc_out1',enc_out0.shape)
-        # print('Shape of enc_out2',enc_out1.shape)
-        # print('Shape of enc_out3',enc_out2.shape)
-        # print('Shape of enc_out4',enc_out3.shape)
-        # print('Shape of enc_out5',enc_out4.shape)
-
-        # concanate parts into one
-        enc_out = torch.cat((enc_out0, enc_out1, enc_out2, enc_out3, enc_out4), 1)
-
-        return enc_out
     
 
 # ==============================================================
 # Define Transformer Model
 # ==============================================================
-def TransformerSNP(src_vocab_size, tuning_params):
+def TransformerSNP(src_vocab_size, seq_len, tuning_params):
     """
     Transformer model with hyperparameter tuning by optuna optimization.
     """
-    layers = []
-    layers.append(Split_concat_Chromosome())
-    
-    layers.append(embed_layer.Embedding(vocab_size=src_vocab_size, embed_dim= tuning_params['n_heads'] * tuning_params['d_k']))
-    layers.append(embed_layer.PositionalEncoding(embed_dim, max_seq_len=100, dropout=0.1))
 
-    n_t_blocks = tuning_params['n_t_blocks']
-    for t_block in range(n_t_blocks):
-        layers.append(encoder.Encoder(embed_dim, heads, expansion_factor, dropout))
+    embedding_dimension = int(tuning_params['n_heads'] * tuning_params['d_k'])
+    layers = []
+    layers.append(embed_layer.Embedding(vocab_size=src_vocab_size, embed_dim=embedding_dimension))
+    # print(torch.nn.Sequential(*layers)(torch.zeros(size=(1, seq_len, embedding_dimension))))
+
+
+    layers.append(embed_layer.PositionalEncoding(embed_dim=embedding_dimension, max_seq_len=seq_len, dropout=tuning_params['dropout']))
+
+    n_blocks = tuning_params['n_blocks']
+    for block in range(n_blocks):
+        layers.append(encoder.Encoder(embed_dim=embedding_dimension, heads=tuning_params['n_heads'], expansion_factor=tuning_params['mlp_factor'], dropout=tuning_params['dropout']))
     
     layers.append(Pooling_Transformer_output())
 
     layers.append(Dropout(tuning_params['dropout']))
-    layers.append(Linear(in_features, 1))
+    layers.append(Linear(in_features=embedding_dimension, out_features=1))
 
     return Sequential(*layers)
 
-
-    # n_outputs = 1
-    # layers = []
-    # for i in range(tuning_params['n_layers']): 
-    #     out_features = int(in_features * tuning_params['outfactor'])
-    #     layers.append(Linear(in_features, out_features))
-    #     act_layer = get_activation_func(tuning_params['activation'])
-    #     layers.append(act_layer)   
-    #     in_features = out_features
-    # layers.append(Dropout(tuning_params['dropout']))
-    # layers.append(Linear(in_features, n_outputs))
-
-    return Sequential(*layers)
 
 # ==============================================================
 # Define training and validation loop
@@ -162,8 +119,10 @@ def train_one_epoch(model, train_loader, loss_function, optimizer, device):
     # iterate through the train loader
     for i, (inputs, targets) in enumerate(train_loader):
         inputs, targets = inputs.to(device), targets.to(device)
+        # print('shape of y', targets.size())
         # forward pass 
         pred_outputs = model(inputs)
+        # print('shape of output', pred_outputs.size())
         # calculate training loss
         loss_training = loss_function(pred_outputs, targets)
         # backward pass and optimization
@@ -200,7 +159,7 @@ def predict(model, val_loader, device):
         # iterate through the validation loader
         for i, (inputs, targets) in enumerate(val_loader):
             inputs, targets = inputs.to(device), targets.to(device)
-            inputs  = inputs.float()
+            # inputs  = inputs.float()
             outputs = model(inputs)
             # concatenate the predictions
             predictions = torch.clone(outputs) if predictions is None else torch.cat((predictions, outputs))
@@ -218,8 +177,8 @@ def predict(model, val_loader, device):
 def train_val_loop(model, training_params, tuning_params, X_train, y_train, X_val, y_val, device):
 
     # transform data to tensor format
-    tensor_X_train, tensor_y_train = torch.Tensor(X_train), torch.Tensor(y_train)
-    tensor_X_val, tensor_y_val = torch.Tensor(X_val), torch.Tensor(y_val)
+    tensor_X_train, tensor_y_train = torch.LongTensor(X_train), torch.Tensor(y_train)
+    tensor_X_val, tensor_y_val = torch.LongTensor(X_val), torch.Tensor(y_val)
 
     # squeeze y to get suitable y dims for training Transformer
     tensor_y_train, tensor_y_val = tensor_y_train.view(len(y_train),1), tensor_y_val.view(len(y_val),1)
@@ -261,35 +220,40 @@ def train_val_loop(model, training_params, tuning_params, X_train, y_train, X_va
         # check if early stopping criteria are met
         # if the current epoch is greater than or equal to 20 
         # and epochs with no improvement surpass early stopping patience
+        print('Check debug 2')
         if epoch >= 20 and epochs_no_improvement >= early_stop_patience:
             # set the early stopping point
             early_stopping_point = epoch - early_stop_patience
             print("Stopped at epoch " + str(epoch) + "| " + "Early stopping point = " + str(early_stopping_point))
             # predict using the best model 
+            print('Check debug 3')
             model = best_model
+            print('Check debug 4')
             y_pred = predict(model, val_loader, device)
             return y_pred, early_stopping_point
-    
+    print('Check debug 5')
     # return the best predicted values
     y_pred = predict(best_model, val_loader, device)
-
+    print('Check debug 6')
     return y_pred, early_stopping_point
 
 # ==============================================================
 # Define objective function for tuning hyperparameters
 # ==============================================================
-def objective(trial, X, y, data_variants, training_params_dict, avg_stop_epochs, device):
+def objective(trial, X, src_vocab_size, y, data_variants, training_params_dict, avg_stop_epochs, device):
 
     # for tuning parameters
     tuning_params_dict = {
         'learning_rate': trial.suggest_categorical('learning_rate', [1e-5, 1e-4, 1e-3, 1e-2, 1e-1]), 
         'weight_decay': trial.suggest_float('weight_decay', 1e-6, 1e-2),
         'n_blocks': trial.suggest_int("n_layers", 2, 6,step=2),
-        'outfactor': trial.suggest_float('outfactor', 0.05, 0.7, step=0.001),
-        'activation': trial.suggest_categorical('activation', ['LeakyReLU', 'ReLU', 'Tanh']),
-        'n_layers': trial.suggest_int("n_layers", 1, 5,step=1),
-        'dropout': trial.suggest_float('dropout', 0.1, 0.5, step=0.05),
-        'pca': trial.suggest_float('pca', 0.75, 0.95, step=0.05)
+        'n_heads': trial.suggest_int("n_heads", 2, 6,step=2),
+        'd_k': trial.suggest_categorical('d_k', [16, 32, 64]),
+        'mlp_factor': trial.suggest_int("mlp_factor", 2, 4,step=1),
+        # 'outfactor': trial.suggest_float('outfactor', 0.05, 0.7, step=0.001),
+        # 'activation': trial.suggest_categorical('activation', ['LeakyReLU', 'ReLU', 'Tanh']),
+        # 'n_layers': trial.suggest_int("n_layers", 1, 5,step=1),
+        'dropout': trial.suggest_float('dropout', 0.1, 0.5, step=0.05)
     }
 
     # extract preprocessed data variants for tuning
@@ -329,9 +293,9 @@ def objective(trial, X, y, data_variants, training_params_dict, avg_stop_epochs,
         #     X_train, X_val = decomposition_PCA(X_train, X_val, tuning_params=tuning_params_dict['pca'])
 
         # create model
-        num_features = X_train.shape[1]
+        seq_len = X_train.shape[1]
         try:
-            model = TransformerSNP(in_features=num_features, tuning_params=tuning_params_dict).to(device)
+            model = TransformerSNP(src_vocab_size, seq_len, tuning_params=tuning_params_dict).to(device)
     
         except Exception as err:
             print('Trial failed. Error in model creation, {}'.format(err))
@@ -341,13 +305,13 @@ def objective(trial, X, y, data_variants, training_params_dict, avg_stop_epochs,
         try:
             y_pred, stopping_point = train_val_loop(model, training_params_dict, tuning_params_dict,
                                      X_train, y_train, X_val, y_val, device)
-            
+            print('Check debug 1')
             # record the early-stopping points
             if stopping_point is not None:
                 early_stopping_points.append(stopping_point)
             else:
                 early_stopping_points.append(training_params_dict['num_epochs'])
-            
+            print('Check debug 7')
             # calculate objective value
             obj_value1 = sklearn.metrics.mean_squared_error(y_true=y_val, y_pred=y_pred)
             obj_value2 = sklearn.metrics.explained_variance_score(y_true=y_val, y_pred=y_pred)
@@ -391,7 +355,7 @@ def objective(trial, X, y, data_variants, training_params_dict, avg_stop_epochs,
 # ==============================================================
 # Call tuning function
 # ==============================================================
-def tuning_Transformer(datapath, X, y, data_variants, training_params_dict, device):
+def tuning_Transformer(datapath, X, src_vocab_size, y, data_variants, training_params_dict, device):
 
     # set seeds for reproducibility
     set_seeds()
@@ -416,7 +380,7 @@ def tuning_Transformer(datapath, X, y, data_variants, training_params_dict, devi
     )
     
     # searching loop with objective tuning
-    study.optimize(lambda trial: objective(trial, X, y, data_variants, training_params_dict, avg_stopping_epochs, device), n_trials=num_trials)
+    study.optimize(lambda trial: objective(trial, X, src_vocab_size, y, data_variants, training_params_dict, avg_stopping_epochs, device), n_trials=num_trials)
 
     # get early stopping of the best trial
     num_avg_stop_epochs = avg_stopping_epochs[study.best_trial.number]
@@ -447,7 +411,7 @@ def tuning_Transformer(datapath, X, y, data_variants, training_params_dict, devi
 # ==============================================================
 # Evaluation the performance on test set
 # ==============================================================
-def evaluate_result_Transformer(datapath, X_train, y_train, X_test, y_test, best_params, data_variants, device):
+def evaluate_result_Transformer(datapath, X_train, src_vocab_size, y_train, X_test, y_test, best_params, data_variants, device):
 
     # set seeds for reproducibility
     set_seeds()
@@ -477,11 +441,11 @@ def evaluate_result_Transformer(datapath, X_train, y_train, X_test, y_test, best
     learning_rate = best_params['learning_rate']
     momentum = best_params['weight_decay']
 
-    # number of input features
-    num_features = X_train.shape[1]
+    # Sequence length
+    seq_len = X_train.shape[1]
 
     # create model
-    model = TransformerSNP(in_features=num_features, tuning_params=best_params).to(device)
+    model = TransformerSNP(src_vocab_size, seq_len, tuning_params=best_params).to(device)
 
     # transform data to tensor format
     tensor_X_train, tensor_y_train = torch.LongTensor(X_train), torch.Tensor(y_train)

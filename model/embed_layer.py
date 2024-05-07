@@ -28,8 +28,24 @@ class Embedding(nn.Module):
         :return: the numerical representation of the input
         """
 
-        output = self.embed(x) * sqrt(self.embed_dim) # Normalizing the variance of the embeddings
+        splitted_x = torch.tensor_split(x, [218, 778, 1323, 1871], dim=1)
+        x0 = splitted_x[0]
+        x1 = splitted_x[1]
+        x2 = splitted_x[2]
+        x3 = splitted_x[3]
+        x4 = splitted_x[4]
+
+        # Normalizing the variance of the embeddings
+        output0 = self.embed(x0) * sqrt(self.embed_dim)
+        output1 = self.embed(x1) * sqrt(self.embed_dim)
+        output2 = self.embed(x2) * sqrt(self.embed_dim)
+        output3 = self.embed(x3) * sqrt(self.embed_dim)
+        output4 = self.embed(x4) * sqrt(self.embed_dim)
+
         # print(f"Embedding shape: {output.shape}") #shape (samples, seq_length, embed_dim)
+        output = torch.cat((output0, output1, output2, output3, output4), 1)
+        # print('Output embedding', output.shape)
+
         return output
     
 
@@ -85,6 +101,22 @@ class PositionalEncoding(nn.Module):
         # print(x.shape)
         # print(self.pe[:, : x.size(1)].shape)
 
+        splitted_x = torch.tensor_split(x, [218, 778, 1323, 1871], dim=1)
+        x0 = splitted_x[0]
+        x1 = splitted_x[1]
+        x2 = splitted_x[2]
+        x3 = splitted_x[3]
+        x4 = splitted_x[4]
+
         # Adding positional encoding to the input tensor X
-        x = x + self.pe[:, : x.size(1)].requires_grad_(False)
-        return self.dropout(x) # Dropout for regularization
+        x0 = x0 + self.pe[:, : x0.size(1)].requires_grad_(False)
+        x1 = x1 + self.pe[:, : x1.size(1)].requires_grad_(False) 
+        x2 = x2 + self.pe[:, : x2.size(1)].requires_grad_(False)
+        x3 = x3 + self.pe[:, : x3.size(1)].requires_grad_(False)
+        x4 = x4 + self.pe[:, : x4.size(1)].requires_grad_(False)
+
+        x = torch.cat((x0, x1, x2, x3, x4), 1)
+        # print('Output Positional encoding', x.shape)
+
+        # Dropout for regularization
+        return self.dropout(x) 

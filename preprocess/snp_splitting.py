@@ -120,6 +120,51 @@ def split_into_chromosome_train(datapath, type):
 
     return X_chr1_train, X_chr2_train, X_chr3_train, X_chr4_train, X_chr5_train
 
+def split_into_chromosome_test(datapath, type):
+
+    X_test = pd.read_csv(datapath + '/data/pheno' + str(type) + '/x_test.csv')
+
+    # Load data into a DataFrame object:
+    df_train = pd.DataFrame(X_test)
+
+    # Sorting the Column name. Format: chromosome_position
+    # DataFrame.columns: return the column labels
+    # for each column name: we'll provide a tuple (chromosome, position) to the sorting function. 
+    # As tuples are sorted by comparing them field by field, this will effectively sort column name by chromosome, then by position.
+    sorted_columns_train = sorted(df_train.columns[1:], key=lambda x: (int(x.split("_")[0]), int(x.split("_")[1])))
+
+    # Sort the DataFrame based on the sorted columns
+    sorted_df_train = df_train[["Unnamed: 0"] + sorted_columns_train]
+
+    # Filter groups of chromosomes
+    chr1_columns = [column for column in sorted_df_train.columns if column.startswith('1_')]
+    df_chr1 = sorted_df_train[['Unnamed: 0'] + chr1_columns]
+
+    chr2_columns = [column for column in sorted_df_train.columns if column.startswith('2_')]
+    df_chr2 = sorted_df_train[['Unnamed: 0'] + chr2_columns]
+
+    chr3_columns = [column for column in sorted_df_train.columns if column.startswith('3_')]
+    df_chr3 = sorted_df_train[['Unnamed: 0'] + chr3_columns]
+
+    chr4_columns = [column for column in sorted_df_train.columns if column.startswith('4_')]
+    df_chr4 = sorted_df_train[['Unnamed: 0'] + chr4_columns]
+
+    chr5_columns = [column for column in sorted_df_train.columns if column.startswith('5_')]
+    df_chr5 = sorted_df_train[['Unnamed: 0'] + chr5_columns]
+
+    # Convert into numpy array
+    X_chr1, X_chr2, X_chr3, X_chr4, X_chr5 = df_chr1.iloc[:,1:].to_numpy(), df_chr2.iloc[:,1:].to_numpy(), df_chr3.iloc[:,1:].to_numpy(), df_chr4.iloc[:,1:].to_numpy(), df_chr5.iloc[:,1:].to_numpy()
+
+    # Create a list of sequences 
+    # from [['C' 'G' 'A' ... 'A' 'G' 'G'], [..], ..] --> ['CGA..AGG', '...',...]
+    X_chr1_test = [''.join(seq) for seq in X_chr1]
+    X_chr2_test = [''.join(seq) for seq in X_chr2]
+    X_chr3_test = [''.join(seq) for seq in X_chr3]
+    X_chr4_test = [''.join(seq) for seq in X_chr4]
+    X_chr5_test = [''.join(seq) for seq in X_chr5]
+
+    return X_chr1_test, X_chr2_test, X_chr3_test, X_chr4_test, X_chr5_test
+
 # -------------------------------------------------------------
 #  3. Load data
 # -------------------------------------------------------------
@@ -127,14 +172,10 @@ def split_into_chromosome_train(datapath, type):
 def load_split_data(datapath, type):
 
     y_train = pd.read_csv(datapath + '/data/pheno' + str(type) + '/y_train.csv')
-    X_test = pd.read_csv(datapath + '/data/pheno' + str(type) + '/x_test.csv')
     y_test = pd.read_csv(datapath + '/data/pheno' + str(type) + '/y_test.csv')
 
     y_train_nparray = y_train.iloc[:,1].to_numpy()
-    X_test_nparray, y_test_nparray = X_test.iloc[:,1:].to_numpy(), y_test.iloc[:,1].to_numpy()
+    y_test_nparray = y_test.iloc[:,1].to_numpy()
 
-    # Create a list of sequences 
-    # from [['C' 'G' 'A' ... 'A' 'G' 'G'], [..], ..] --> ['CGA..AGG', '...',...]
-    X_test_nparray_seq = [''.join(seq) for seq in X_test_nparray]
 
-    return y_train_nparray, X_test_nparray_seq, y_test_nparray
+    return y_train_nparray, y_test_nparray
