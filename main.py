@@ -160,13 +160,14 @@ if __name__ == '__main__':
     # x4_vocab = print(X_chr4_tokenizer.get_vocab_size())
     # x5_vocab = print(X_chr5_tokenizer.get_vocab_size())
 
-
+    # Check max_len for each chrmosome in train dataset
     # x1 = choose_max_length(X_chr1_train, X_chr1_tokenizer)  # max_len = 218 
     # x2 =choose_max_length(X_chr1_train, X_chr2_tokenizer)   # max_len = 560 
     # x3= choose_max_length(X_chr1_train, X_chr3_tokenizer)   # max_len = 545 
     # x4 =choose_max_length(X_chr1_train, X_chr4_tokenizer)   # max_len = 548 
     # x5 =choose_max_length(X_chr1_train, X_chr5_tokenizer)   # max_len = 535 
 
+    # Check max_len for each chrmosome in test dataset
     # x1 = choose_max_length(X_chr1_test, X_test_chr1_tokenizer)  # max_len = 1 
     # x2 =choose_max_length(X_chr1_test, X_test_chr2_tokenizer)   # max_len = 617 
     # x3= choose_max_length(X_chr1_test, X_test_chr3_tokenizer)   # max_len = 593 
@@ -180,14 +181,18 @@ if __name__ == '__main__':
     embedded_X_chr4 = np.array(encode(X_chr4_train, X_chr1_tokenizer, 548))
     embedded_X_chr5 = np.array(encode(X_chr5_train, X_chr1_tokenizer, 535))
 
+    list_X_train = [embedded_X_chr1, embedded_X_chr2, embedded_X_chr3, embedded_X_chr4, embedded_X_chr5]
+
     embedded_X_test_chr1 = np.array(encode(X_chr1_test, X_test_chr1_tokenizer, 50)) # assign idices to each token[13, 29, 5, 52, 18, ...]
     embedded_X_test_chr2 = np.array(encode(X_chr2_test, X_test_chr2_tokenizer, 617))
     embedded_X_test_chr3 = np.array(encode(X_chr3_test, X_test_chr3_tokenizer, 593))
     embedded_X_test_chr4 = np.array(encode(X_chr4_test, X_test_chr4_tokenizer, 594))
     embedded_X_test_chr5 = np.array(encode(X_chr5_test, X_test_chr5_tokenizer, 584))
     
-    X_train = np.concatenate((embedded_X_chr1, embedded_X_chr2, embedded_X_chr3, embedded_X_chr4, embedded_X_chr5), axis=1)
-    X_test = np.concatenate((embedded_X_test_chr1, embedded_X_test_chr2, embedded_X_test_chr3, embedded_X_test_chr4, embedded_X_test_chr5), axis=1)
+    list_X_test = [embedded_X_test_chr1, embedded_X_test_chr2, embedded_X_test_chr3, embedded_X_test_chr4, embedded_X_test_chr5]
+
+    # X_train = np.concatenate((embedded_X_chr1, embedded_X_chr2, embedded_X_chr3, embedded_X_chr4, embedded_X_chr5), axis=1)
+    # X_test = np.concatenate((embedded_X_test_chr1, embedded_X_test_chr2, embedded_X_test_chr3, embedded_X_test_chr4, embedded_X_test_chr5), axis=1)
 
     # transform to tensor
     # tensor_y = torch.Tensor(y_train).view(len(y_train), 1)
@@ -196,8 +201,8 @@ if __name__ == '__main__':
     # seq_len = tensor_X.shape[1]
     src_vocab_size = X_chr1_tokenizer.get_vocab_size()
 
-    best_params = tuning_Transformer(datapath, X_train, src_vocab_size, y_train, data_variants, training_params_dict, device)
-    evaluate_result_Transformer(datapath, X_train, src_vocab_size, y_train, X_test, y_test, best_params, data_variants, device)
+    best_params = tuning_Transformer(datapath, list_X_train, src_vocab_size, y_train, data_variants, training_params_dict, device)
+    evaluate_result_Transformer(datapath, list_X_train, src_vocab_size, y_train, list_X_test, y_test, best_params, data_variants, device)
 
     exit(1)
     # test = Test_Embedding_Positional(embedded_X_chr1, X_chr1_tokenizer.get_vocab_size(), seq_len)

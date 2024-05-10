@@ -39,45 +39,45 @@ class Encoder(nn.Module):
 
     def forward(self, x, mask=None):
 
-        splitted_x = torch.tensor_split(x, [218, 778, 1323, 1871], dim=1)
-        # print('Len splitted_x', len(splitted_x))
-        fc_norm = []
+        # splitted_x = torch.tensor_split(x, [218, 778, 1323, 1871], dim=1)
+        # # print('Len splitted_x', len(splitted_x))
+        # fc_norm = []
 
-        for xi in splitted_x:
-            attention_out = self.attention(xi, mask=None)
-            attention_out = attention_out + xi
-            attention_norm = self.dropout(self.norm(attention_out))
-            fc_out = self.feed_forward(attention_norm)
-            fc_out = fc_out + attention_norm
-            fc = self.dropout(self.norm(fc_out))
-            fc_norm.append(fc)
+        # for xi in splitted_x:
+        #     attention_out = self.attention(xi, mask=None)
+        #     attention_out = attention_out + xi
+        #     attention_norm = self.dropout(self.norm(attention_out))
+        #     fc_out = self.feed_forward(attention_norm)
+        #     fc_out = fc_out + attention_norm
+        #     fc = self.dropout(self.norm(fc_out))
+        #     fc_norm.append(fc)
         
-        output = torch.cat((fc_norm[0], fc_norm[1], fc_norm[2], fc_norm[3], fc_norm[4]), 1)
+        # output = torch.cat((fc_norm[0], fc_norm[1], fc_norm[2], fc_norm[3], fc_norm[4]), 1)
 
         #################### Multi-Head Attention ####################
         # first, pass the key, query and value through the multi head attention layer
-        # attention_out = self.attention(x, mask=None)  # e.g.: 32x10x512
+        attention_out = self.attention(x, mask=None)  # e.g.: 32x10x512
 
         ##################### Add & Norm Layer ######################
         # then add the residual connection
         # by adding input to output of attention layer
-        # attention_out = attention_out + x  # e.g.: 32x10x512
+        attention_out = attention_out + x  # e.g.: 32x10x512
 
         # after that we normalize and use dropout
-        # attention_norm = self.dropout(self.norm(attention_out))  # e.g.: 32x10x512
+        attention_norm = self.dropout(self.norm(attention_out))  # e.g.: 32x10x512
         # print(attention_norm.shape)
 
         #################### Feed-Forwar Network ####################
-        # fc_out = self.feed_forward(attention_norm)  # e.g.:32x10x512 -> #32x10x2048 -> 32x10x512
+        fc_out = self.feed_forward(attention_norm)  # e.g.:32x10x512 -> #32x10x2048 -> 32x10x512
 
         ##################### Add & Norm Layer ######################
         # Residual connection
-        # fc_out = fc_out + attention_norm  # e.g.: 32x10x512
+        fc_out = fc_out + attention_norm  # e.g.: 32x10x512
 
         # dropout + normalization
-        # fc_norm = self.dropout(self.norm(fc_out))  # e.g.: 32x10x512
+        fc_norm = self.dropout(self.norm(fc_out))  # e.g.: 32x10x512
 
-        return output
+        return fc_norm
 
 
 class EncoderBlock(nn.Module):
