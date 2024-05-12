@@ -337,7 +337,7 @@ def objective(trial, list_X_train, src_vocab_size, y, data_variants, training_pa
         seq_len = X_train.shape[1]
         try:
             print('check 3')
-            model = RegressionBlock(src_vocab_size, seq_len, tuning_params=tuning_params_dict).to(device)
+            model = RegressionBlock(tuning_params=tuning_params_dict).to(device)
             print('check 4')
         except Exception as err:
             print('Trial failed. Error in model creation, {}'.format(err))
@@ -508,7 +508,7 @@ def evaluate_result_Transformer(datapath, list_X_train, src_vocab_size, y_train,
     seq_len = X_train.shape[1]
 
     # create model
-    model = RegressionBlock(src_vocab_size, seq_len, tuning_params=best_params).to(device)
+    model = RegressionBlock(tuning_params=best_params).to(device)
 
     # transform data to tensor format
     # tensor_X_train = torch.LongTensor(X_train)
