@@ -111,11 +111,11 @@ if __name__ == '__main__':
     # ----------------------------------------------------
     # set up parameters for tuning
     training_params_dict = {
-        'num_trials': 2,
+        'num_trials': 50,
         'min_trials': 20,
         'percentile': 65,
         'optunaseed': 42,
-        'num_epochs': 2,
+        'num_epochs': 50,
         'early_stop': 20,
         'batch_size': 32
     }

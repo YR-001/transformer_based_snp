@@ -93,6 +93,7 @@ def TransformerSNP(src_vocab_size, seq_len, tuning_params):
     embedding_dimension = int(tuning_params['n_heads'] * tuning_params['d_k'])
 
     layers = []
+
     # Transformer model
     layers.append(embed_layer.Embedding(vocab_size=src_vocab_size, embed_dim=embedding_dimension))
 
@@ -151,16 +152,20 @@ def train_one_epoch(model, train_loader, loss_function, optimizer, device):
     # iterate through the train loader
     for i, (inputs, targets) in enumerate(train_loader):
         inputs, targets = inputs.to(device), targets.to(device)
-        # print('shape of y', targets.size())
         # forward pass 
         pred_outputs = model(inputs)
-        print('shape of output: ', pred_outputs)
+    
+        # print('[train_one_epoch] iter {} - pred_outputs: {}'.format(i, pred_outputs))
         # calculate training loss
         loss_training = loss_function(pred_outputs, targets)
+        # print('[train_one_epoch] iter {} - passed loss_function'.format(i))
         # backward pass and optimization
         optimizer.zero_grad()
+        # print('[train_one_epoch] iter {} - passed optimizer.zero_grad'.format(i))
         loss_training.backward()
+        # print('[train_one_epoch] iter {} - passed backward'.format(i))
         optimizer.step()
+        # print('[train_one_epoch] iter {} - passed optimizer.step'.format(i))
 
 # Function to validate the model for one epoch
 def validate_one_epoch(model, val_loader, loss_function, device):
@@ -207,7 +212,7 @@ def predict(model, val_loader, device):
 # Function to train model on train loader and evaluate on validation loader
 # also return early_stopping_point
 def train_val_loop(model, training_params, tuning_params, X_train, y_train, X_val, y_val, device):
-    print('check 6')
+    
     # transform data to tensor format
     # tensor_X_train = torch.LongTensor(X_train)
     tensor_y_train = torch.Tensor(y_train)
@@ -241,10 +246,7 @@ def train_val_loop(model, training_params, tuning_params, X_train, y_train, X_va
     num_epochs = training_params['num_epochs']
     early_stop_patience = training_params['early_stop']
     for epoch in range(num_epochs):
-        print('check 7')
         train_one_epoch(model, train_loader, loss_function, optimizer, device)
-        exit(1)
-        print('current check 1')
         val_loss = validate_one_epoch(model, val_loader, loss_function, device)
         
         # check if the current validation loss is the best observed so far
@@ -261,21 +263,16 @@ def train_val_loop(model, training_params, tuning_params, X_train, y_train, X_va
         # check if early stopping criteria are met
         # if the current epoch is greater than or equal to 20 
         # and epochs with no improvement surpass early stopping patience
-        print('Check debug 2')
         if epoch >= 20 and epochs_no_improvement >= early_stop_patience:
             # set the early stopping point
             early_stopping_point = epoch - early_stop_patience
             print("Stopped at epoch " + str(epoch) + "| " + "Early stopping point = " + str(early_stopping_point))
             # predict using the best model 
-            print('Check debug 3')
             model = best_model
-            print('Check debug 4')
             y_pred = predict(model, val_loader, device)
             return y_pred, early_stopping_point
-    print('Check debug 5')
     # return the best predicted values
     y_pred = predict(best_model, val_loader, device)
-    print('Check debug 6')
     return y_pred, early_stopping_point
 
 # ==============================================================
@@ -287,9 +284,9 @@ def objective(trial, list_X_train, src_vocab_size, y, data_variants, training_pa
     tuning_params_dict = {
         'learning_rate': trial.suggest_categorical('learning_rate', [1e-5, 1e-4, 1e-3, 1e-2, 1e-1]), 
         'weight_decay': trial.suggest_float('weight_decay', 1e-6, 1e-2),
-        'n_blocks': trial.suggest_int("n_layers", 2, 6,step=2),
-        'n_heads': trial.suggest_int("n_heads", 2, 4,step=2),
-        'd_k': trial.suggest_categorical('d_k', [16, 32]),
+        'n_blocks': trial.suggest_int("n_blocks", 2, 6,step=2),
+        'n_heads': trial.suggest_int("n_heads", 2, 6,step=2),
+        'd_k': trial.suggest_categorical('d_k', [16, 32, 64]),
         'mlp_factor': trial.suggest_int("mlp_factor", 2, 4,step=1),
         'dropout': trial.suggest_float('dropout', 0.1, 0.5, step=0.05)
     }
@@ -315,25 +312,22 @@ def objective(trial, list_X_train, src_vocab_size, y, data_variants, training_pa
     # seq_len = X_train.shape[1]
     chr1_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[0].shape[1], tuning_params=tuning_params_dict).to(device)
     chr2_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[1].shape[1], tuning_params=tuning_params_dict).to(device)
-    # chr3_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[2].shape[1], tuning_params=tuning_params_dict).to(device)
-    # chr4_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[3].shape[1], tuning_params=tuning_params_dict).to(device)
-    # chr5_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[4].shape[1], tuning_params=tuning_params_dict).to(device)
+    chr3_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[2].shape[1], tuning_params=tuning_params_dict).to(device)
+    chr4_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[3].shape[1], tuning_params=tuning_params_dict).to(device)
+    chr5_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[4].shape[1], tuning_params=tuning_params_dict).to(device)
 
-    chr1_output, chr2_output = chr1_model(torch.LongTensor(list_X_train[0])), chr2_model(torch.LongTensor(list_X_train[1]))
-    # chr1_output, chr2_output, chr3_output, chr4_output, chr5_output = chr1_model(torch.LongTensor(list_X_train[0])), chr2_model(torch.LongTensor(list_X_train[1])), chr3_model(torch.LongTensor(list_X_train[2])), chr4_model(torch.LongTensor(list_X_train[3])), chr5_model(torch.LongTensor(list_X_train[4]))
+    chr1_output, chr2_output, chr3_output, chr4_output, chr5_output = chr1_model(torch.LongTensor(list_X_train[0])), chr2_model(torch.LongTensor(list_X_train[1])), chr3_model(torch.LongTensor(list_X_train[2])), chr4_model(torch.LongTensor(list_X_train[3])), chr5_model(torch.LongTensor(list_X_train[4]))
 
-    X = Concatenate_chr(chr1_output, chr2_output)
-    # X = Concatenate_chr(chr1_output, chr2_output, chr3_output, chr4_output, chr5_output)
+    X = Concatenate_chr(chr1_output, chr2_output, chr3_output, chr4_output, chr5_output)
+    X = X.detach_()
 
     # forl cross-validation kfolds, default = 5 folds
     kfold = KFold(n_splits=5, shuffle=True, random_state=42)
      # main loop with cv-folding
     for fold, (train_ids, val_ids) in enumerate(kfold.split(X, y)):
-        print('check 1')
         # prepare data for training and validating in each fold
         print('Fold {}: num_train_ids={}, num_val_ids={}'.format(fold, len(train_ids), len(val_ids)))
         X_train, y_train, X_val, y_val = X[train_ids], y[train_ids], X[val_ids], y[val_ids]
-        print('check 2')
         # preprocessing data
         # if minmax_scaler_mode == True:
         #     y_train, y_val = preprocess_mimax_scaler(y_train, y_val)
@@ -345,25 +339,20 @@ def objective(trial, list_X_train, src_vocab_size, y, data_variants, training_pa
         # create model
         seq_len = X_train.shape[1]
         try:
-            print('check 3')
             model = RegressionBlock(tuning_params=tuning_params_dict).to(device)
-            print('check 4')
         except Exception as err:
             print('Trial failed. Error in model creation, {}'.format(err))
             raise optuna.exceptions.TrialPruned()
 
         # call training model over each fold
         try:
-            print('check 5')
             y_pred, stopping_point = train_val_loop(model, training_params_dict, tuning_params_dict,
                                      X_train, y_train, X_val, y_val, device)
-            print('Check debug 1')
             # record the early-stopping points
             if stopping_point is not None:
                 early_stopping_points.append(stopping_point)
             else:
                 early_stopping_points.append(training_params_dict['num_epochs'])
-            print('Check debug 7')
             # calculate objective value
             obj_value1 = sklearn.metrics.mean_squared_error(y_true=y_val, y_pred=y_pred)
             obj_value2 = sklearn.metrics.explained_variance_score(y_true=y_val, y_pred=y_pred)
@@ -502,6 +491,7 @@ def evaluate_result_Transformer(datapath, list_X_train, src_vocab_size, y_train,
     chr1_output, chr2_output, chr3_output, chr4_output, chr5_output = chr1_model(torch.LongTensor(list_X_train[0])), chr2_model(torch.LongTensor(list_X_train[1])), chr3_model(torch.LongTensor(list_X_train[2])), chr4_model(torch.LongTensor(list_X_train[3])), chr5_model(torch.LongTensor(list_X_train[4]))
     
     X_train = Concatenate_chr(chr1_output, chr2_output, chr3_output, chr4_output, chr5_output)
+    X_train = X_train.detach_()
 
     chr1_test_model = TransformerSNP(src_vocab_size, seq_len=list_X_test[0].shape[1], tuning_params=best_params).to(device)
     chr2_test_model = TransformerSNP(src_vocab_size, seq_len=list_X_test[1].shape[1], tuning_params=best_params).to(device)
@@ -512,6 +502,7 @@ def evaluate_result_Transformer(datapath, list_X_train, src_vocab_size, y_train,
     chr1_test_output, chr2_test_output, chr3_test_output, chr4_test_output, chr5_test_output = chr1_test_model(torch.LongTensor(list_X_test[0])), chr2_test_model(torch.LongTensor(list_X_test[1])), chr3_test_model(torch.LongTensor(list_X_test[2])), chr4_test_model(torch.LongTensor(list_X_test[3])), chr5_test_model(torch.LongTensor(list_X_test[4]))
     
     X_test = Concatenate_chr(chr1_test_output, chr2_test_output, chr3_test_output, chr4_test_output, chr5_test_output)
+    X_test = X_test.detach_()
 
     # Sequence length
     seq_len = X_train.shape[1]
@@ -555,6 +546,5 @@ def evaluate_result_Transformer(datapath, list_X_train, src_vocab_size, y_train,
 
 
     return test_exp_variance
-
 
 
