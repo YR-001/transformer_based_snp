@@ -79,8 +79,8 @@ class Pooling_Transformer_output(torch.nn.Module):
     def forward(self, x):
         return torch.mean(x, dim=1)
 
-def Concatenate_chr(chr1, chr2):
-    output = torch.cat((chr1, chr2), 1)
+def Concatenate_chr(chr1, chr2, chr3, chr4, chr5):
+    output = torch.cat((chr1, chr2, chr3, chr4, chr5), 1)
     return output
     
 # ==============================================================
