@@ -47,7 +47,6 @@ class Embedding(nn.Module):
         # print('Output embedding', output.shape)
 
         output = self.embed(x) * sqrt(self.embed_dim)
-
         return output
     
 
@@ -120,6 +119,21 @@ class PositionalEncoding(nn.Module):
         # x = torch.cat((x0, x1, x2, x3, x4), 1)
         # print('Output Positional encoding', x.shape)
         x = x + self.pe[:, : x.size(1)].requires_grad_(False)
-
         # Dropout for regularization
         return self.dropout(x) 
+    
+
+
+# x = torch.tensor([
+#     [4, 5, 3, 13, 5, 19, 0],
+#     [18, 11, 12, 13, 14, 0, 0],  
+#     [20, 21, 22, 0, 0, 0, 0],  
+# ])
+
+# embed_x = Embedding(vocab_size=15, embed_dim=4)
+# position_x = PositionalEncoding(embed_dim=4, max_seq_len= 7)
+# output = embed_x(x)
+# output_pos = position_x(output)
+
+# print('Embed', output)
+# print('Position', output_pos)

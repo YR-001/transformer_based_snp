@@ -147,13 +147,16 @@ if __name__ == '__main__':
     X_chr4_tokenizer = BPE_embed(X_chr4_train, 4)
     X_chr5_tokenizer = BPE_embed(X_chr5_train, 5)
 
-    X_test_chr1_tokenizer = BPE_embed(X_chr1_test, 6)
-    X_test_chr2_tokenizer = BPE_embed(X_chr2_test, 7)
-    X_test_chr3_tokenizer = BPE_embed(X_chr3_test, 8)
-    X_test_chr4_tokenizer = BPE_embed(X_chr4_test, 9)
-    X_test_chr5_tokenizer = BPE_embed(X_chr5_test, 10)
+    # pad_token = torch.tensor([X_chr1_tokenizer.token_to_id("[PAD]")], dtype=torch.int64)
 
-    #Vocab_size is the same, 30000
+    # X_test_chr1_tokenizer = BPE_embed(X_chr1_test, 6)
+    # X_test_chr2_tokenizer = BPE_embed(X_chr2_test, 7)
+    # X_test_chr3_tokenizer = BPE_embed(X_chr3_test, 8)
+    # X_test_chr4_tokenizer = BPE_embed(X_chr4_test, 9)
+    # X_test_chr5_tokenizer = BPE_embed(X_chr5_test, 10)
+    
+    
+    #Vocab_size is the same, set vocab_size=2048
     # x1_vocab = print(X_chr1_tokenizer.get_vocab_size())
     # x2_vocab = print(X_chr2_tokenizer.get_vocab_size())
     # x3_vocab = print(X_chr3_tokenizer.get_vocab_size())
@@ -161,33 +164,40 @@ if __name__ == '__main__':
     # x5_vocab = print(X_chr5_tokenizer.get_vocab_size())
 
     # Check max_len for each chrmosome in train dataset
-    # x1 = choose_max_length(X_chr1_train, X_chr1_tokenizer)  # max_len = 218 
-    # x2 =choose_max_length(X_chr1_train, X_chr2_tokenizer)   # max_len = 560 
-    # x3= choose_max_length(X_chr1_train, X_chr3_tokenizer)   # max_len = 545 
-    # x4 =choose_max_length(X_chr1_train, X_chr4_tokenizer)   # max_len = 548 
-    # x5 =choose_max_length(X_chr1_train, X_chr5_tokenizer)   # max_len = 535 
+    # x1 = choose_max_length(X_chr1_train, X_chr1_tokenizer)  # max_len = 460 
+    # x2 =choose_max_length(X_chr1_train, X_chr2_tokenizer)   # max_len = 650 
+    # x3= choose_max_length(X_chr1_train, X_chr3_tokenizer)   # max_len = 635 
+    # x4 =choose_max_length(X_chr1_train, X_chr4_tokenizer)   # max_len = 643 
+    # x5 =choose_max_length(X_chr1_train, X_chr5_tokenizer)   # max_len = 621 
 
     # Check max_len for each chrmosome in test dataset
-    # x1 = choose_max_length(X_chr1_test, X_test_chr1_tokenizer)  # max_len = 1 
-    # x2 =choose_max_length(X_chr1_test, X_test_chr2_tokenizer)   # max_len = 617 
-    # x3= choose_max_length(X_chr1_test, X_test_chr3_tokenizer)   # max_len = 593 
-    # x4 =choose_max_length(X_chr1_test, X_test_chr4_tokenizer)   # max_len = 594 
-    # x5 =choose_max_length(X_chr1_test, X_test_chr5_tokenizer)   # max_len = 584 
+    # x1 = choose_max_length(X_chr1_test, X_test_chr1_tokenizer)  # max_len = 464 
+    # x2 =choose_max_length(X_chr1_test, X_test_chr2_tokenizer)   # max_len = 659 
+    # x3= choose_max_length(X_chr1_test, X_test_chr3_tokenizer)   # max_len = 633 
+    # x4 =choose_max_length(X_chr1_test, X_test_chr4_tokenizer)   # max_len = 641 
+    # x5 =choose_max_length(X_chr1_test, X_test_chr5_tokenizer)   # max_len = 620 
+
+    # x1 = choose_max_length(X_chr1_test, X_chr1_tokenizer)  # max_len = 450 
+    # x2 =choose_max_length(X_chr1_test, X_chr2_tokenizer)   # max_len = 642 
+    # x3= choose_max_length(X_chr1_test, X_chr3_tokenizer)   # max_len = 631 
+    # x4 =choose_max_length(X_chr1_test, X_chr4_tokenizer)   # max_len = 636 
+    # x5 =choose_max_length(X_chr1_test, X_chr5_tokenizer)   # max_len = 616 
 
 
-    embedded_X_chr1 = np.array(encode(X_chr1_train, X_chr1_tokenizer, 218)) # assign idices to each token[13, 29, 5, 52, 18, ...]
-    embedded_X_chr2 = np.array(encode(X_chr2_train, X_chr1_tokenizer, 560))
-    embedded_X_chr3 = np.array(encode(X_chr3_train, X_chr1_tokenizer, 545))
-    embedded_X_chr4 = np.array(encode(X_chr4_train, X_chr1_tokenizer, 548))
-    embedded_X_chr5 = np.array(encode(X_chr5_train, X_chr1_tokenizer, 535))
+
+    embedded_X_chr1 = np.array(encode(X_chr1_train, X_chr1_tokenizer, 460)) # assign idices to each token[13, 29, 5, 52, 18, ...]
+    embedded_X_chr2 = np.array(encode(X_chr2_train, X_chr2_tokenizer, 650))
+    embedded_X_chr3 = np.array(encode(X_chr3_train, X_chr3_tokenizer, 635))
+    embedded_X_chr4 = np.array(encode(X_chr4_train, X_chr4_tokenizer, 643))
+    embedded_X_chr5 = np.array(encode(X_chr5_train, X_chr5_tokenizer, 621))
 
     list_X_train = [embedded_X_chr1, embedded_X_chr2, embedded_X_chr3, embedded_X_chr4, embedded_X_chr5]
 
-    embedded_X_test_chr1 = np.array(encode(X_chr1_test, X_test_chr1_tokenizer, 50)) # assign idices to each token[13, 29, 5, 52, 18, ...]
-    embedded_X_test_chr2 = np.array(encode(X_chr2_test, X_test_chr2_tokenizer, 617))
-    embedded_X_test_chr3 = np.array(encode(X_chr3_test, X_test_chr3_tokenizer, 593))
-    embedded_X_test_chr4 = np.array(encode(X_chr4_test, X_test_chr4_tokenizer, 594))
-    embedded_X_test_chr5 = np.array(encode(X_chr5_test, X_test_chr5_tokenizer, 584))
+    embedded_X_test_chr1 = np.array(encode(X_chr1_test, X_chr1_tokenizer, 450)) # assign idices to each token[13, 29, 5, 52, 18, ...]
+    embedded_X_test_chr2 = np.array(encode(X_chr2_test, X_chr2_tokenizer, 642))
+    embedded_X_test_chr3 = np.array(encode(X_chr3_test, X_chr3_tokenizer, 631))
+    embedded_X_test_chr4 = np.array(encode(X_chr4_test, X_chr4_tokenizer, 636))
+    embedded_X_test_chr5 = np.array(encode(X_chr5_test, X_chr5_tokenizer, 616))
     
     list_X_test = [embedded_X_test_chr1, embedded_X_test_chr2, embedded_X_test_chr3, embedded_X_test_chr4, embedded_X_test_chr5]
 

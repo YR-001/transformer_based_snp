@@ -71,6 +71,17 @@ def set_seeds(seed: int=42):
     torch.cuda.manual_seed_all(seed)
     torch.cuda.manual_seed(seed)
 
+# Create mask to ignore Padding token
+def create_mask_each_chr(X):
+    mask_all_chr = []
+    for xi in X:
+        mask = (xi != 0).astype(np.int32) # Shape: (batch_size, sequence_length)
+        # Reshape the mask to the desired shape: (batch_size, 1, 1, sequence_length)
+        final_mask = mask[:, np.newaxis, np.newaxis, :]  # Shape: (batch_size, 1, 1, sequence_length)
+        mask_tensor = torch.LongTensor(final_mask)
+        mask_all_chr.append(mask_tensor)
+    return mask_all_chr
+
 # Average transformer output along sequence-dim to process with linear head regression
 class Pooling_Transformer_output(torch.nn.Module):
     def __init__(self):
@@ -79,14 +90,15 @@ class Pooling_Transformer_output(torch.nn.Module):
     def forward(self, x):
         return torch.mean(x, dim=1)
 
+# Concatenate each chromosome (output of Transformer) into 1 input for Regression block
 def Concatenate_chr(chr1, chr2, chr3, chr4, chr5):
     output = torch.cat((chr1, chr2, chr3, chr4, chr5), 1)
     return output
-    
+
 # ==============================================================
 # Define Transformer Model
 # ==============================================================
-def TransformerSNP(src_vocab_size, seq_len, tuning_params):
+def TransformerSNP(mask, src_vocab_size, seq_len, tuning_params):
     """
     Transformer model with hyperparameter tuning by optuna optimization.
     """
@@ -101,7 +113,7 @@ def TransformerSNP(src_vocab_size, seq_len, tuning_params):
 
     n_blocks = tuning_params['n_blocks']
     for block in range(n_blocks):
-        layers.append(encoder.Encoder(embed_dim=embedding_dimension, heads=tuning_params['n_heads'], expansion_factor=tuning_params['mlp_factor'], dropout=tuning_params['dropout']))
+        layers.append(encoder.Encoder(mask, embed_dim=embedding_dimension, heads=tuning_params['n_heads'], expansion_factor=tuning_params['mlp_factor'], dropout=tuning_params['dropout']))
 
     return Sequential(*layers)
 
@@ -309,12 +321,14 @@ def objective(trial, list_X_train, src_vocab_size, y, data_variants, training_pa
     first_obj_values = []
     second_obj_values = []
 
+    list_X_mask = create_mask_each_chr(list_X_train)
+
     # seq_len = X_train.shape[1]
-    chr1_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[0].shape[1], tuning_params=tuning_params_dict).to(device)
-    chr2_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[1].shape[1], tuning_params=tuning_params_dict).to(device)
-    chr3_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[2].shape[1], tuning_params=tuning_params_dict).to(device)
-    chr4_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[3].shape[1], tuning_params=tuning_params_dict).to(device)
-    chr5_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[4].shape[1], tuning_params=tuning_params_dict).to(device)
+    chr1_model = TransformerSNP(list_X_mask[0], src_vocab_size, seq_len=list_X_train[0].shape[1], tuning_params=tuning_params_dict).to(device)
+    chr2_model = TransformerSNP(list_X_mask[1], src_vocab_size, seq_len=list_X_train[1].shape[1], tuning_params=tuning_params_dict).to(device)
+    chr3_model = TransformerSNP(list_X_mask[2], src_vocab_size, seq_len=list_X_train[2].shape[1], tuning_params=tuning_params_dict).to(device)
+    chr4_model = TransformerSNP(list_X_mask[3], src_vocab_size, seq_len=list_X_train[3].shape[1], tuning_params=tuning_params_dict).to(device)
+    chr5_model = TransformerSNP(list_X_mask[4], src_vocab_size, seq_len=list_X_train[4].shape[1], tuning_params=tuning_params_dict).to(device)
 
     chr1_output, chr2_output, chr3_output, chr4_output, chr5_output = chr1_model(torch.LongTensor(list_X_train[0])), chr2_model(torch.LongTensor(list_X_train[1])), chr3_model(torch.LongTensor(list_X_train[2])), chr4_model(torch.LongTensor(list_X_train[3])), chr5_model(torch.LongTensor(list_X_train[4]))
 
@@ -482,22 +496,26 @@ def evaluate_result_Transformer(datapath, list_X_train, src_vocab_size, y_train,
     learning_rate = best_params['learning_rate']
     momentum = best_params['weight_decay']
 
-    chr1_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[0].shape[1], tuning_params=best_params).to(device)
-    chr2_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[1].shape[1], tuning_params=best_params).to(device)
-    chr3_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[2].shape[1], tuning_params=best_params).to(device)
-    chr4_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[3].shape[1], tuning_params=best_params).to(device)
-    chr5_model = TransformerSNP(src_vocab_size, seq_len=list_X_train[4].shape[1], tuning_params=best_params).to(device)
+    list_X_mask = create_mask_each_chr(list_X_train)
+
+    chr1_model = TransformerSNP(list_X_mask[0], src_vocab_size, seq_len=list_X_train[0].shape[1], tuning_params=best_params).to(device)
+    chr2_model = TransformerSNP(list_X_mask[1], src_vocab_size, seq_len=list_X_train[1].shape[1], tuning_params=best_params).to(device)
+    chr3_model = TransformerSNP(list_X_mask[2], src_vocab_size, seq_len=list_X_train[2].shape[1], tuning_params=best_params).to(device)
+    chr4_model = TransformerSNP(list_X_mask[3], src_vocab_size, seq_len=list_X_train[3].shape[1], tuning_params=best_params).to(device)
+    chr5_model = TransformerSNP(list_X_mask[4], src_vocab_size, seq_len=list_X_train[4].shape[1], tuning_params=best_params).to(device)
 
     chr1_output, chr2_output, chr3_output, chr4_output, chr5_output = chr1_model(torch.LongTensor(list_X_train[0])), chr2_model(torch.LongTensor(list_X_train[1])), chr3_model(torch.LongTensor(list_X_train[2])), chr4_model(torch.LongTensor(list_X_train[3])), chr5_model(torch.LongTensor(list_X_train[4]))
     
     X_train = Concatenate_chr(chr1_output, chr2_output, chr3_output, chr4_output, chr5_output)
     X_train = X_train.detach_()
 
-    chr1_test_model = TransformerSNP(src_vocab_size, seq_len=list_X_test[0].shape[1], tuning_params=best_params).to(device)
-    chr2_test_model = TransformerSNP(src_vocab_size, seq_len=list_X_test[1].shape[1], tuning_params=best_params).to(device)
-    chr3_test_model = TransformerSNP(src_vocab_size, seq_len=list_X_test[2].shape[1], tuning_params=best_params).to(device)
-    chr4_test_model = TransformerSNP(src_vocab_size, seq_len=list_X_test[3].shape[1], tuning_params=best_params).to(device)
-    chr5_test_model = TransformerSNP(src_vocab_size, seq_len=list_X_test[4].shape[1], tuning_params=best_params).to(device)
+    list_X_mask_test = create_mask_each_chr(list_X_test)
+
+    chr1_test_model = TransformerSNP(list_X_mask_test[0], src_vocab_size, seq_len=list_X_test[0].shape[1], tuning_params=best_params).to(device)
+    chr2_test_model = TransformerSNP(list_X_mask_test[1], src_vocab_size, seq_len=list_X_test[1].shape[1], tuning_params=best_params).to(device)
+    chr3_test_model = TransformerSNP(list_X_mask_test[2], src_vocab_size, seq_len=list_X_test[2].shape[1], tuning_params=best_params).to(device)
+    chr4_test_model = TransformerSNP(list_X_mask_test[3], src_vocab_size, seq_len=list_X_test[3].shape[1], tuning_params=best_params).to(device)
+    chr5_test_model = TransformerSNP(list_X_mask_test[4], src_vocab_size, seq_len=list_X_test[4].shape[1], tuning_params=best_params).to(device)
 
     chr1_test_output, chr2_test_output, chr3_test_output, chr4_test_output, chr5_test_output = chr1_test_model(torch.LongTensor(list_X_test[0])), chr2_test_model(torch.LongTensor(list_X_test[1])), chr3_test_model(torch.LongTensor(list_X_test[2])), chr4_test_model(torch.LongTensor(list_X_test[3])), chr5_test_model(torch.LongTensor(list_X_test[4]))
     

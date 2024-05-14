@@ -84,17 +84,17 @@ def Word2vec_embed(seqs):
 # 3. Function for using BPE to embed
 # input seq using seq (not in k_mer)
 # ---------------------------------------
-def prepare_tokenizer_trainer():
+def prepare_tokenizer_trainer(vocab_size):
     tokenizer = Tokenizer(BPE())
-    trainer = BpeTrainer()
+    trainer = BpeTrainer(special_tokens = ['[PAD]'], vocab_size=vocab_size)
     tokenizer.pre_tokenizer = Whitespace()
     return tokenizer, trainer
 
-def train_tokenizer(iterator):
+def train_tokenizer(iterator, vocab_size):
     """
     Takes the files and trains the tokenizer.
     """
-    tokenizer, trainer = prepare_tokenizer_trainer()
+    tokenizer, trainer = prepare_tokenizer_trainer(vocab_size)
     tokenizer.train_from_iterator(iterator, trainer) # training the tokenzier
     return tokenizer    
 
@@ -103,14 +103,14 @@ def batch_iterator(dataset):
     for i in range(0, len(dataset), batch_size):
         yield dataset[i : i + batch_size]
 
-def BPE_embed(seqs, chr_index, vocab_size=2000):
+def BPE_embed(seqs, chr_index, vocab_size=2048):
     
     tokenizer_path = os.path.join('./', "tokenizer_BPE" + str(chr_index) +".json")
     if not os.path.exists(tokenizer_path):
         print('Tokenizer BPE {} is not exited, create BPE tokenize'.format(chr_index))
         # Create (training) new tokenizer from the dataset
         # print(batch_iterator(seqs))
-        tokenizer = train_tokenizer(batch_iterator(seqs))
+        tokenizer = train_tokenizer(batch_iterator(seqs), vocab_size)
         # tokenizer.enable_padding(length=max_length) # padding to max_len
 
         # Saving trained tokenizer to the file path
@@ -123,7 +123,7 @@ def BPE_embed(seqs, chr_index, vocab_size=2000):
     return tokenizer # Returns the loaded tokenizer or the trained tokenizer
 
 # Check and choose the max_len of sequence in config (i.e. if reasult =180 --> max_len = 200) 
-def choose_max_length(X,tokenizer):
+def choose_max_length(X, tokenizer):
     max_len_src = 0
 
     for x in X:

@@ -7,7 +7,7 @@ import math
 
 class MultiHeadAttention(nn.Module):
 
-    def __init__(self, d_model: int, heads: int, dropout: float):
+    def __init__(self, mask, d_model: int, heads: int, dropout: float):
         """
         Multi-Head Attention class
         :param embed_dim: the embedding dimension
@@ -15,6 +15,7 @@ class MultiHeadAttention(nn.Module):
         """
         super(MultiHeadAttention, self).__init__()
 
+        self.mask = mask
         self.d_model = d_model # 512 by default
         self.heads = heads #8 by default
         
@@ -35,15 +36,17 @@ class MultiHeadAttention(nn.Module):
         self.dropout = nn.Dropout(dropout) # Dropout layer to avoid overfitting
     
     @staticmethod
-    def attention(query, key, value, dropout: nn.Dropout, mask=None):# mask => When we want certain words to NOT interact with others, we "hide" them
+    def attention(query, key, value, dropout: nn.Dropout, mask):# mask => When we want certain words to NOT interact with others, we "hide" them
         
         d_k = query.shape[-1] # The last dimension of query, key, and value
         
         # We calculate the Attention(Q,K,V) as in the formula in the image above 
         attention_scores = (query @ key.transpose(-2,-1)) / math.sqrt(d_k) # @ = Matrix multiplication sign in PyTorch
-        
+        # print('Attention score at beggining', attention_scores) #batch_size, heads, q_len, k_len
+
         # Before applying the softmax, we apply the mask to hide some interactions between words
         if mask is not None: # If a mask IS defined...
+            # print('Attention score shape', attention_scores.shape)
             attention_scores.masked_fill_(mask == 0, -1e9) # Replace each value where mask is equal to 0 by -1e9
         attention_scores = attention_scores.softmax(dim = -1) # Applying softmax
         if dropout is not None: # If a dropout IS defined...
@@ -51,11 +54,10 @@ class MultiHeadAttention(nn.Module):
             
         return (attention_scores @ value), attention_scores # Multiply the output matrix by the V matrix, as in the formula
 
-    def forward(self, x, mask=None):
+    def forward(self, x):
 
         # Input of size: batch_size x sequence length x embedding dims
         # batch_size, seq_len, d_model = x.shape
-
         # Projection into query, key, value: (batch, seq_len, d_model)
         query = self.w_q(x) # Q' matrix
         key = self.w_k(x) # K' matrix
@@ -67,9 +69,9 @@ class MultiHeadAttention(nn.Module):
         query = query.view(query.shape[0], query.shape[1], self.heads, self.d_k).transpose(1,2) # Transpose => bring the head to the second dimension
         key = key.view(key.shape[0], key.shape[1], self.heads, self.d_k).transpose(1,2) # Transpose => bring the head to the second dimension
         value = value.view(value.shape[0], value.shape[1], self.heads, self.d_k).transpose(1,2) # Transpose => bring the head to the second dimension
-        
+
         # Obtaining the output and the attention scores
-        x, self.attention_scores = MultiHeadAttention.attention(query, key, value, self.dropout, mask=None)
+        x, self.attention_scores = MultiHeadAttention.attention(query, key, value, self.dropout, mask=self.mask)
         
         # Obtaining the H matrix
         # (batch, h, seq_len, d_k) --> (batch, seq_len, h, d_k) --> (batch, seq_len, d_model)
@@ -79,3 +81,4 @@ class MultiHeadAttention(nn.Module):
         output = self.w_o(x)  # H x W0 = (32x10x8x64) x (32x8x64x512) = (32x10x512)
         
         return output
+    

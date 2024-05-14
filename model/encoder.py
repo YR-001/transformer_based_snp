@@ -8,6 +8,7 @@ from model.embed_layer import Embedding, PositionalEncoding
 class Encoder(nn.Module):
 
     def __init__(self,
+                 mask,
                  embed_dim=512,
                  heads=8,
                  expansion_factor=4,
@@ -23,7 +24,7 @@ class Encoder(nn.Module):
         """
         super(Encoder, self).__init__()
 
-        self.attention = MultiHeadAttention(embed_dim, heads, dropout)  # the multi-head attention
+        self.attention = MultiHeadAttention(mask, embed_dim, heads, dropout)  # the multi-head attention
         self.norm = nn.LayerNorm(embed_dim)  # the normalization layer
 
         # The fully connected feed-forward layer, 
@@ -37,7 +38,7 @@ class Encoder(nn.Module):
         # Dropout to prevent overfitting
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, mask=None):
+    def forward(self, x):
 
         # splitted_x = torch.tensor_split(x, [218, 778, 1323, 1871], dim=1)
         # # print('Len splitted_x', len(splitted_x))
@@ -56,8 +57,8 @@ class Encoder(nn.Module):
 
         #################### Multi-Head Attention ####################
         # first, pass the key, query and value through the multi head attention layer
-        attention_out = self.attention(x, mask=None)  # e.g.: 32x10x512
-
+        attention_out = self.attention(x)  # e.g.: 32x10x512
+        
         ##################### Add & Norm Layer ######################
         # then add the residual connection
         # by adding input to output of attention layer
