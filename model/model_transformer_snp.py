@@ -16,7 +16,7 @@ from torch import optim
 from torch.nn import Sequential, MaxPool1d, Flatten, LeakyReLU, BatchNorm1d, Dropout, Linear, ReLU, Tanh
 
 from torch.optim import SGD, Adam
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 from model import embed_layer, mh_attention, encoder, transformer, utils
 
@@ -33,32 +33,18 @@ def get_activation_func(name):
         act_func = Tanh()
     return act_func
 
-# min-max normalization
-def preprocess_mimax_scaler(y_train, y_val):
-    minmax_scaler = MinMaxScaler()
-    y_train = np.expand_dims(y_train, axis=1)
-    y_val = np.expand_dims(y_val, axis=1)
-    y_train_scaled = minmax_scaler.fit_transform(y_train)
-    y_val_scaled   = minmax_scaler.transform(y_val)
-    return y_train_scaled, y_val_scaled
+# Create a custom dataset class to handle list of tensors
+class ListTensorDataset(Dataset):
+    def __init__(self, X_list, y_train):
+        self.X_list = X_list
+        self.y_train = y_train
 
-# normalize dataset using StandardScaler
-def preprocess_standard_scaler(X_train, X_val):
-    standard_scaler = StandardScaler()
-    standard_scaler.fit(X_train)
-    X_train_scaled = standard_scaler.transform(X_train)
-    X_val_scaled   = standard_scaler.transform(X_val)
-    return X_train_scaled, X_val_scaled
+    def __len__(self):
+        return len(self.y_train)
 
-# decomposition PCA
-def decomposition_PCA(X_train, X_val, pca_value):
-    pca = PCA(pca_value)
-    pca.fit(X_train)
-    X_train_scaled = pca.transform(X_train)
-    X_val_scaled = pca.transform(X_val)
-    # pk.dump(pca, open('./pca.pkl', 'wb'))
-    # print('shape after PCA: train ={}, val={}'.format(X_train.shape, X_val.shape))
-    return X_train_scaled, X_val_scaled
+    def __getitem__(self, idx):
+        # Return a list containing all tensors in the batch and the corresponding label
+        return [X[idx] for X in self.X_list], self.y_train[idx]
 
 # set seeds for reproducibility
 def set_seeds(seed: int=42):
@@ -81,6 +67,15 @@ def create_mask_each_chr(X):
         mask_tensor = torch.LongTensor(final_mask)
         mask_all_chr.append(mask_tensor)
     return mask_all_chr
+
+# def create_mask_each_chr(X):
+#     mask_all_chr = []
+#     for xi in X:
+#         mask = (xi != 0).int()  # Shape: (batch_size, sequence_length)
+#         # Reshape the mask to the desired shape: (batch_size, 1, 1, sequence_length)
+#         final_mask = mask.unsqueeze(1).unsqueeze(2)  # Shape: (batch_size, 1, 1, sequence_length)
+#         mask_all_chr.append(final_mask)
+#     return mask_all_chr
 
 # Average transformer output along sequence-dim to process with linear head regression
 class Pooling_Transformer_output(torch.nn.Module):
@@ -130,42 +125,100 @@ def RegressionBlock(tuning_params):
 
     return Sequential(*layers)
 
-# class Transformer_Prediction(torch.nn.Module):
-#     def __init__(self, seq_len, tuning_params, transformer_each_chr):
-#         super(Transformer_Prediction, self).__init__()
-#         self.seq_len_1 = 
-#         self.transformer = transformer_each_chr
-#         self.regression = RegressionBlock(tuning_params)
+class CombinedModel(torch.nn.Module):
+    def __init__(self, src_vocab_size, tuning_params):
+        super(CombinedModel, self).__init__()
 
-#     def forward(self, list_X_train):
+        self.src_vocab_size = src_vocab_size
+        self.tuning_params = tuning_params
 
-#         # Transformer model for each chromosome
-#         chr1_model = self.transformer(list_X_train[1])
-#         chr2_model = self.transformer(list_X_train[2])
-#         chr3_model = self.transformer(list_X_train[3])
-#         chr4_model = self.transformer(list_X_train[4])
-#         chr5_model = self.transformer(list_X_train[5])
+    def TransformerSNP(self, mask, src_vocab_size, seq_len, tuning_params):
+        """
+        Transformer model with hyperparameter tuning by optuna optimization.
+        """
+        embedding_dimension = int(tuning_params['n_heads'] * tuning_params['d_k'])
 
-#         # Concatenate output after transformer blocks
-#         x = Concatenate_chr(chr1_model, chr2_model, chr3_model, chr4_model, chr5_model)
+        layers = []
 
-#         # Prediction block
-#         output = RegressionBlock(x)
-#         return output
+        # Transformer model
+        layers.append(embed_layer.Embedding(vocab_size=src_vocab_size, embed_dim=embedding_dimension))
 
+        layers.append(embed_layer.PositionalEncoding(embed_dim=embedding_dimension, max_seq_len=seq_len, dropout=tuning_params['dropout']))
+
+        n_blocks = tuning_params['n_blocks']
+        for block in range(n_blocks):
+            layers.append(encoder.Encoder(mask, embed_dim=embedding_dimension, heads=tuning_params['n_heads'], expansion_factor=tuning_params['mlp_factor'], dropout=tuning_params['dropout']))
+
+        return Sequential(*layers)
+
+    def RegressionBlock(self, tuning_params):
+    
+        embedding_dimension = int(tuning_params['n_heads'] * tuning_params['d_k'])
+        layers = []
+        # Average pooling
+        layers.append(Pooling_Transformer_output())
+        
+        # Feed Forward layer to do regression
+        layers.append(Dropout(tuning_params['dropout']))
+        layers.append(Linear(in_features=embedding_dimension, out_features=1))
+
+        return Sequential(*layers)
+    
+    # Create mask to ignore Padding token
+    def create_mask_each_chr(self, list_X):
+        mask_all_chr = []
+        for xi in list_X:
+            mask = (xi != 0).astype(np.int32) # Shape: (batch_size, sequence_length)
+            # Reshape the mask to the desired shape: (batch_size, 1, 1, sequence_length)
+            final_mask = mask[:, np.newaxis, np.newaxis, :]  # Shape: (batch_size, 1, 1, sequence_length)
+            mask_tensor = torch.LongTensor(final_mask)
+            mask_all_chr.append(mask_tensor)
+        return mask_all_chr
+    
+    # Concatenate each chromosome (output of Transformer) into 1 input for Regression block
+    def Concatenate_chr(self, *args):
+        output = torch.cat(args, 1)
+        return output
+    
+    def forward(self, list_X):
+        print('Start transformer')
+
+        list_X_mask = self.create_mask_each_chr(list_X)
+
+        transformer_outputs = []
+        for i in range(len(list_X)):
+            transformer_model = self.TransformerSNP(list_X_mask[i], self.src_vocab_size, seq_len=list_X[i].shape[1], tuning_params=self.tuning_params)
+            transformer_output = transformer_model(list_X[i])
+            transformer_outputs.append(transformer_output)
+
+        # transformer_models = torch.nn.ModuleList([
+        #     CombinedModel.TransformerSNP(list_X_mask[i], self.src_vocab_size, seq_len=list_X[i].shape[1], tuning_params=self.tuning_params)
+        #     for i in range(len(list_X))])
+
+        # transformer_outputs = [model(X) for model, X in zip(transformer_models, list_X)]
+
+        concatenated_output = self.Concatenate_chr(*transformer_outputs)
+        concatenated_output = concatenated_output.detach_()
+
+        regression_model = self.RegressionBlock(tuning_params=self.tuning_params)
+        output = regression_model(concatenated_output)
+
+        return output
 # ==============================================================
 # Define training and validation loop
 # ==============================================================
-
 # Function to train the model for one epoch
 def train_one_epoch(model, train_loader, loss_function, optimizer, device):
     
     model.train()
+    print('Start train_one_epoch')
     # iterate through the train loader
     for i, (inputs, targets) in enumerate(train_loader):
-        inputs, targets = inputs.to(device), targets.to(device)
+        # inputs, targets = inputs.to(device), targets.to(device)
         # forward pass 
+        print('Start train model')
         pred_outputs = model(inputs)
+        exit(1)
     
         # print('[train_one_epoch] iter {} - pred_outputs: {}'.format(i, pred_outputs))
         # calculate training loss
@@ -223,28 +276,40 @@ def predict(model, val_loader, device):
 
 # Function to train model on train loader and evaluate on validation loader
 # also return early_stopping_point
-def train_val_loop(model, training_params, tuning_params, X_train, y_train, X_val, y_val, device):
-    
+def train_val_loop(model, training_params, tuning_params, X_train_list, y_train, X_val_list, y_val, device):
+    print('Going to train_val_loop')
     # transform data to tensor format
+    list_tensor_X_train = [torch.from_numpy(item).long() for item in X_train_list]
     # tensor_X_train = torch.LongTensor(X_train)
     tensor_y_train = torch.Tensor(y_train)
     # tensor_X_val = torch.LongTensor(X_val)
+    list_tensor_X_val = [torch.from_numpy(item).long() for item in X_val_list]
     tensor_y_val = torch.Tensor(y_val)
-
+    
     # squeeze y to get suitable y dims for training Transformer
     tensor_y_train, tensor_y_val = tensor_y_train.view(len(y_train),1), tensor_y_val.view(len(y_val),1)
+
+    # Create the list dataset
+    train_dataset = ListTensorDataset(list_tensor_X_train, y_train)
+    val_dataset = ListTensorDataset(list_tensor_X_val, y_train)
     
     # define data loaders for training and validation data
-    train_loader = DataLoader(dataset=list(zip(X_train, tensor_y_train)), batch_size=training_params['batch_size'], shuffle=True)
-    val_loader   = DataLoader(dataset=list(zip(X_val, tensor_y_val)), batch_size=training_params['batch_size'], shuffle=False)
+    # train_loader = DataLoader(dataset=list(zip(X_train, tensor_y_train)), batch_size=training_params['batch_size'], shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=training_params['batch_size'], shuffle=True)
+
+    # print('Shape of x_train', len(X_train))
+    # print('Shape of y_train', len(tensor_y_train))
+
+    # val_loader   = DataLoader(dataset=list(zip(X_val, tensor_y_val)), batch_size=training_params['batch_size'], shuffle=False)
+    val_loader   = DataLoader(val_dataset, batch_size=training_params['batch_size'], shuffle=False)
 
     # define loss function and optimizer
     loss_function = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(params=model.parameters(), lr=tuning_params['learning_rate'], weight_decay=tuning_params['weight_decay'])
     
-    # for name, param in model.named_parameters():
-    #     if param.requires_grad:
-    #         print(name, param.data) # weight, bias
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            print(name, param.data) # weight, bias
 
     # track the best loss value and best model
     best_model = copy.deepcopy(model)
@@ -258,6 +323,7 @@ def train_val_loop(model, training_params, tuning_params, X_train, y_train, X_va
     num_epochs = training_params['num_epochs']
     early_stop_patience = training_params['early_stop']
     for epoch in range(num_epochs):
+        print('Start going to train_one_epch')
         train_one_epoch(model, train_loader, loss_function, optimizer, device)
         val_loss = validate_one_epoch(model, val_loader, loss_function, device)
         
@@ -321,39 +387,62 @@ def objective(trial, list_X_train, src_vocab_size, y, data_variants, training_pa
     first_obj_values = []
     second_obj_values = []
 
-    list_X_mask = create_mask_each_chr(list_X_train)
+    # list_X_mask = create_mask_each_chr(list_X_train)
 
     # seq_len = X_train.shape[1]
-    chr1_model = TransformerSNP(list_X_mask[0], src_vocab_size, seq_len=list_X_train[0].shape[1], tuning_params=tuning_params_dict).to(device)
-    chr2_model = TransformerSNP(list_X_mask[1], src_vocab_size, seq_len=list_X_train[1].shape[1], tuning_params=tuning_params_dict).to(device)
-    chr3_model = TransformerSNP(list_X_mask[2], src_vocab_size, seq_len=list_X_train[2].shape[1], tuning_params=tuning_params_dict).to(device)
-    chr4_model = TransformerSNP(list_X_mask[3], src_vocab_size, seq_len=list_X_train[3].shape[1], tuning_params=tuning_params_dict).to(device)
-    chr5_model = TransformerSNP(list_X_mask[4], src_vocab_size, seq_len=list_X_train[4].shape[1], tuning_params=tuning_params_dict).to(device)
+    # chr1_model = TransformerSNP(list_X_mask[0], src_vocab_size, seq_len=list_X_train[0].shape[1], tuning_params=tuning_params_dict).to(device)
+    # chr2_model = TransformerSNP(list_X_mask[1], src_vocab_size, seq_len=list_X_train[1].shape[1], tuning_params=tuning_params_dict).to(device)
+    # chr3_model = TransformerSNP(list_X_mask[2], src_vocab_size, seq_len=list_X_train[2].shape[1], tuning_params=tuning_params_dict).to(device)
+    # chr4_model = TransformerSNP(list_X_mask[3], src_vocab_size, seq_len=list_X_train[3].shape[1], tuning_params=tuning_params_dict).to(device)
+    # chr5_model = TransformerSNP(list_X_mask[4], src_vocab_size, seq_len=list_X_train[4].shape[1], tuning_params=tuning_params_dict).to(device)
 
-    chr1_output, chr2_output, chr3_output, chr4_output, chr5_output = chr1_model(torch.LongTensor(list_X_train[0])), chr2_model(torch.LongTensor(list_X_train[1])), chr3_model(torch.LongTensor(list_X_train[2])), chr4_model(torch.LongTensor(list_X_train[3])), chr5_model(torch.LongTensor(list_X_train[4]))
+    # chr1_output, chr2_output, chr3_output, chr4_output, chr5_output = chr1_model(torch.LongTensor(list_X_train[0])), chr2_model(torch.LongTensor(list_X_train[1])), chr3_model(torch.LongTensor(list_X_train[2])), chr4_model(torch.LongTensor(list_X_train[3])), chr5_model(torch.LongTensor(list_X_train[4]))
 
-    X = Concatenate_chr(chr1_output, chr2_output, chr3_output, chr4_output, chr5_output)
-    X = X.detach_()
+    # X = Concatenate_chr(chr1_output, chr2_output, chr3_output, chr4_output, chr5_output)
+    # X = X.detach_()
+
+    # try:
+    #     # model = RegressionBlock(tuning_params=tuning_params_dict).to(device)
+    #     model = CombinedModel(list_X_mask, src_vocab_size, list_X_train, tuning_params_dict).to(device)
+    # except Exception as err:
+    #     print('Trial failed. Error in model creation, {}'.format(err))
+    #     raise optuna.exceptions.TrialPruned()
 
     # forl cross-validation kfolds, default = 5 folds
     kfold = KFold(n_splits=5, shuffle=True, random_state=42)
-     # main loop with cv-folding
-    for fold, (train_ids, val_ids) in enumerate(kfold.split(X, y)):
-        # prepare data for training and validating in each fold
-        print('Fold {}: num_train_ids={}, num_val_ids={}'.format(fold, len(train_ids), len(val_ids)))
-        X_train, y_train, X_val, y_val = X[train_ids], y[train_ids], X[val_ids], y[val_ids]
-        # preprocessing data
-        # if minmax_scaler_mode == True:
-        #     y_train, y_val = preprocess_mimax_scaler(y_train, y_val)
-        # if standard_scaler_mode == True:
-        #     X_train, X_val = preprocess_standard_scaler(X_train, X_val)
-        # if pca_fitting_mode == True:
-        #     X_train, X_val = decomposition_PCA(X_train, X_val, tuning_params=tuning_params_dict['pca'])
+    # main loop with cv-folding
+    # for fold, (train_ids, val_ids) in enumerate(kfold.split(X, y)):
+    #     # prepare data for training and validating in each fold
+    #     print('Fold {}: num_train_ids={}, num_val_ids={}'.format(fold, len(train_ids), len(val_ids)))
+    #     X_train, y_train, X_val, y_val = X[train_ids], y[train_ids], X[val_ids], y[val_ids]
+
+    # for fold, (train_ids, val_ids) in enumerate(kfold.split(range(len(y)))):
+    #     print(f'Fold {fold}: num_train_ids={len(train_ids)}, num_val_ids={len(val_ids)}')
+        
+    # Split the data into train and validation sets for all chromosomes at once
+    all_folds = [kfold.split(X_chr) for X_chr in list_X_train]
+
+    # Pipeline-like structure
+    for fold, fold_indices in enumerate(zip(*all_folds), start=1):
+        X_train_list = []
+        X_val_list = []
+
+        print(f"Fold {fold}:")
+        for i, (train_ids, val_ids) in enumerate(fold_indices, start=1):
+            
+            X_chr = list_X_train[i-1]
+            X_train, X_val = X_chr[train_ids], X_chr[val_ids]
+            y_train, y_val = y[train_ids], y[val_ids]
+            X_train_list.append(X_train)
+            X_val_list.append(X_val)
+
+        print('Done step splitting train and')
 
         # create model
-        seq_len = X_train.shape[1]
+        # seq_len = X_train.shape[1]
         try:
-            model = RegressionBlock(tuning_params=tuning_params_dict).to(device)
+            # model = RegressionBlock(tuning_params=tuning_params_dict).to(device)
+            model = CombinedModel(src_vocab_size, tuning_params=tuning_params_dict).to(device)
         except Exception as err:
             print('Trial failed. Error in model creation, {}'.format(err))
             raise optuna.exceptions.TrialPruned()
@@ -361,7 +450,7 @@ def objective(trial, list_X_train, src_vocab_size, y, data_variants, training_pa
         # call training model over each fold
         try:
             y_pred, stopping_point = train_val_loop(model, training_params_dict, tuning_params_dict,
-                                     X_train, y_train, X_val, y_val, device)
+                                     X_train_list, y_train, X_val_list, y_val, device)
             # record the early-stopping points
             if stopping_point is not None:
                 early_stopping_points.append(stopping_point)

@@ -111,11 +111,11 @@ if __name__ == '__main__':
     # ----------------------------------------------------
     # set up parameters for tuning
     training_params_dict = {
-        'num_trials': 50,
+        'num_trials': 1,
         'min_trials': 20,
         'percentile': 65,
         'optunaseed': 42,
-        'num_epochs': 50,
+        'num_epochs': 1,
         'early_stop': 20,
         'batch_size': 32
     }
@@ -124,6 +124,7 @@ if __name__ == '__main__':
     print('---------------------------------------------------------')
     # print('Tuning MLP with dataset pheno-{}, minmax={}, standard={}, pcafit={}'.format(dataset, minmax_scale, standa_scale, pca_fitting))
     print('---------------------------------------------------------\n')
+    # len each chromosome_train: 2401, 1696, 2015, 1727, 2161
     X_chr1_train, X_chr2_train, X_chr3_train, X_chr4_train, X_chr5_train = split_into_chromosome_train(datapath, dataset)
     X_chr1_test, X_chr2_test, X_chr3_test, X_chr4_test, X_chr5_test = split_into_chromosome_test(datapath, dataset)
     y_train, y_test= load_split_data(datapath, dataset)
@@ -135,11 +136,57 @@ if __name__ == '__main__':
     # tokenized_chr4_seq = snp_tokenizer(tokenize_type, seqs=X_chr4_train, kmer=kmer)
     # tokenized_chr5_seq = snp_tokenizer(tokenize_type, seqs=X_chr5_train, kmer=kmer)
 
+    ##################################################################################
     # Embed data
     # a. Embed token using index
     # embedded_seq = token_embed(tokenized_chr1_seq)
     # b. Embed token using Word2vec
     # embedded_seq = Word2vec_embed(tokenized_chr1_seq)
+    # print(X_chr1_train)
+    X_chr1_kmer = seqs2kmer_nonoverlap(X_chr1_train, kmer)
+    X_chr2_kmer = seqs2kmer_nonoverlap(X_chr2_train, kmer)
+    X_chr3_kmer = seqs2kmer_nonoverlap(X_chr3_train, kmer)
+    X_chr4_kmer = seqs2kmer_nonoverlap(X_chr4_train, kmer)
+    X_chr5_kmer = seqs2kmer_nonoverlap(X_chr5_train, kmer)
+
+    X_chr1_tokenizer = kmer_embed(X_chr1_kmer, 1)
+
+    X_test_chr1_kmer = seqs2kmer_nonoverlap(X_chr1_train, kmer)
+    X_test_chr2_kmer = seqs2kmer_nonoverlap(X_chr2_train, kmer)
+    X_test_chr3_kmer = seqs2kmer_nonoverlap(X_chr3_train, kmer)
+    X_test_chr4_kmer = seqs2kmer_nonoverlap(X_chr4_train, kmer)
+    X_test_chr5_kmer = seqs2kmer_nonoverlap(X_chr5_train, kmer)
+
+    # x1 = choose_max_length(X_chr1_kmer, X_chr1_tokenizer) #801
+    # x2 = choose_max_length(X_chr2_kmer, X_chr1_tokenizer) #566
+    # x3 = choose_max_length(X_chr3_kmer, X_chr1_tokenizer) #672
+    # x4 = choose_max_length(X_chr4_kmer, X_chr1_tokenizer) #576
+    # x5 = choose_max_length(X_chr5_kmer, X_chr1_tokenizer) #721
+
+    embedded_X_chr1 = np.array(encode(X_chr1_kmer, X_chr1_tokenizer, 801))
+    embedded_X_chr2 = np.array(encode(X_chr2_kmer, X_chr1_tokenizer, 566))
+    embedded_X_chr3 = np.array(encode(X_chr3_kmer, X_chr1_tokenizer, 672))
+    embedded_X_chr4 = np.array(encode(X_chr4_kmer, X_chr1_tokenizer, 576))
+    embedded_X_chr5 = np.array(encode(X_chr5_kmer, X_chr1_tokenizer, 721))
+
+    list_X_train = [embedded_X_chr1, embedded_X_chr2, embedded_X_chr3, embedded_X_chr4, embedded_X_chr5]
+
+    embedded_X_test_chr1 = np.array(encode(X_test_chr1_kmer, X_chr1_tokenizer, 801)) # assign idices to each token[13, 29, 5, 52, 18, ...]
+    embedded_X_test_chr2 = np.array(encode(X_test_chr2_kmer, X_chr1_tokenizer, 566))
+    embedded_X_test_chr3 = np.array(encode(X_test_chr3_kmer, X_chr1_tokenizer, 672))
+    embedded_X_test_chr4 = np.array(encode(X_test_chr4_kmer, X_chr1_tokenizer, 576))
+    embedded_X_test_chr5 = np.array(encode(X_test_chr5_kmer, X_chr1_tokenizer, 721))
+    
+    list_X_test = [embedded_X_test_chr1, embedded_X_test_chr2, embedded_X_test_chr3, embedded_X_test_chr4, embedded_X_test_chr5]
+
+    src_vocab_size = X_chr1_tokenizer.get_vocab_size()
+
+    best_params = tuning_Transformer(datapath, list_X_train, src_vocab_size, y_train, data_variants, training_params_dict, device)
+    evaluate_result_Transformer(datapath, list_X_train, src_vocab_size, y_train, list_X_test, y_test, best_params, data_variants, device)
+
+    
+    exit(1)
+    ##################################################################################
     # c. Embed token using BPE
     X_chr1_tokenizer = BPE_embed(X_chr1_train, 1)
     X_chr2_tokenizer = BPE_embed(X_chr2_train, 2)

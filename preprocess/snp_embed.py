@@ -7,17 +7,77 @@ from gensim.models import Word2Vec
 from math import sin, cos, sqrt, log
 
 from tokenizers import Tokenizer
-from tokenizers.models import BPE, Unigram
-from tokenizers.trainers import BpeTrainer
+from tokenizers.models import BPE, Unigram, WordLevel
+from tokenizers.trainers import BpeTrainer, WordLevelTrainer
 from tokenizers.pre_tokenizers import Sequence, Digits, Whitespace
 
+# ---------------------------------------
+# 1. K-mer
+# ---------------------------------------
+def prepare_tokenizer_trainer_kmer():
+    tokenizer = Tokenizer(WordLevel())
+    trainer = WordLevelTrainer(special_tokens = ['[PAD]'])
+    tokenizer.pre_tokenizer = Whitespace()
+    return tokenizer, trainer
 
+def train_tokenizer_kmer(iterator):
+    """
+    Takes the files and trains the tokenizer.
+    """
+    tokenizer, trainer = prepare_tokenizer_trainer_kmer()
+    tokenizer.train_from_iterator(iterator, trainer) # training the tokenzier
+    return tokenizer    
+
+def batch_iterator_kmer(dataset):
+    batch_size = 500
+    for i in range(0, len(dataset), batch_size):
+        yield dataset[i : i + batch_size]
+
+def kmer_embed(seqs, chr_index):
+    
+    tokenizer_path = os.path.join('./', "tokenizer_kmer" + str(chr_index) +".json")
+    if not os.path.exists(tokenizer_path):
+        print('Tokenizer K-mer {} is not exited, create K-mer tokenize'.format(chr_index))
+        # Create (training) new tokenizer from the dataset
+        # print(batch_iterator(seqs))
+        tokenizer = train_tokenizer_kmer(batch_iterator_kmer(seqs))
+        # tokenizer.enable_padding(length=max_length) # padding to max_len
+
+        # Saving trained tokenizer to the file path
+        tokenizer.save(tokenizer_path) # dictionary of {"G": 1, "A": 2, ....}
+        # print(tokenizer.get_vocab_size()) # get vocab_size
+    else:
+        print('Tokenizer K-mer {} is already created, just load it'.format(chr_index))
+        tokenizer = Tokenizer.from_file(tokenizer_path) # If the tokenizer already exist, we load it
+    
+    return tokenizer # Returns the loaded tokenizer or the trained tokenizer
+
+
+# Tokenizing data
+# by assign idices to each token
+def encode(X, tokenizer, max_length):
+    result = []
+    tokenizer.enable_padding(length=max_length)
+    # loop each sample in data(i.e. X_train ['SK GE EL FT G.', '...',...])
+    for x in X:
+
+        # assign idices to each token[13, 29, 5, 52, 18] + padding
+        ids = tokenizer.encode(x).ids 
+
+        if len(ids) > max_length:
+            ids = ids[:max_length] # trunct sequences if len(sample)>max_len
+        # else:
+        #     tokenizer.enable_padding(length=max_length)
+
+        result.append(ids)
+
+    return result
 # ---------------------------------------
 # 1. Function for using indexed to embed
 # ---------------------------------------
 def token_embed(seqs):
     token_to_index = {}  # Initialize an empty dictionary to store token-to-index mappings
-    index = 0  # Initialize an index counter
+    index = 1  # Initialize an index counter
     indexed_kmer_sequences = []  # Initialize an empty list to store indexed k-mer sequences
     # Iterate over each k-mer sequence
     for k_mers in seqs:
@@ -128,6 +188,7 @@ def choose_max_length(X, tokenizer):
 
     for x in X:
         src_ids = tokenizer.encode(x).ids
+        # print('len src_ids', len(src_ids))
         max_len_src = max(max_len_src, len(src_ids))
     return print(f'Max length of sample in SNP dataset: {max_len_src}')
 

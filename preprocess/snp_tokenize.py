@@ -29,7 +29,10 @@ def seqs2kmer_nonoverlap(seqs, kmer):
 
     seq_kmers = [] 
     for s in seqs:
-        seq_kmers.append([s[i:i+kmer] for i in range(0, len(s), kmer)])
+        # ouput: [['ACG', 'CGT', 'GTA', 'TAC', ..., 'ACG', 'CGT'], ['CGT, ..., 'CTA'], ...]
+        # seq_kmers.append([s[i:i+kmer] for i in range(0, len(s), kmer)])
+        # output: [[ACG CGT GTA TAC ... ACG CGT], [CGT ... CTA]]
+        seq_kmers.append(' '.join([s[i:i+kmer] for i in range(0, len(s), kmer)]))
     return seq_kmers
 
 # ---------------------------------------
