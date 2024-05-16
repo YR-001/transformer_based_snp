@@ -93,117 +93,110 @@ def Concatenate_chr(chr1, chr2, chr3, chr4, chr5):
 # ==============================================================
 # Define Transformer Model
 # ==============================================================
-def TransformerSNP(mask, src_vocab_size, seq_len, tuning_params):
-    """
-    Transformer model with hyperparameter tuning by optuna optimization.
-    """
-    embedding_dimension = int(tuning_params['n_heads'] * tuning_params['d_k'])
 
-    layers = []
+class TransformerSNP(torch.nn.Module):
+    def __init__(self, src_vocab_size, seq_len, tuning_params):
+        super(TransformerSNP, self).__init__()
+        print("[TransformerSNP-init]: inside TransformerSNP ")
+        embedding_dimension = int(tuning_params['n_heads'] * tuning_params['d_k'])
 
-    # Transformer model
-    layers.append(embed_layer.Embedding(vocab_size=src_vocab_size, embed_dim=embedding_dimension))
+        self.embedding = embed_layer.Embedding(src_vocab_size, embedding_dimension)
+        self.positional_encoding = embed_layer.PositionalEncoding(embedding_dimension, seq_len, tuning_params['dropout'])
+        self.encoder_blocks = torch.nn.ModuleList([
+            encoder.Encoder(embedding_dimension, tuning_params['n_heads'], tuning_params['mlp_factor'], tuning_params['dropout'])
+            for _ in range(tuning_params['n_blocks'])
+        ])
 
-    layers.append(embed_layer.PositionalEncoding(embed_dim=embedding_dimension, max_seq_len=seq_len, dropout=tuning_params['dropout']))
-
-    n_blocks = tuning_params['n_blocks']
-    for block in range(n_blocks):
-        layers.append(encoder.Encoder(mask, embed_dim=embedding_dimension, heads=tuning_params['n_heads'], expansion_factor=tuning_params['mlp_factor'], dropout=tuning_params['dropout']))
-
-    return Sequential(*layers)
-
-def RegressionBlock(tuning_params):
+    def forward(self, x, mask):
+        x = self.embedding(x)
+        print('[TransformerSNP] in forward: passed emdedding')
+        x = self.positional_encoding(x)
+        print('[TransformerSNP] in forward: passed positional_encoding')
+        i = 0
+        for block in self.encoder_blocks:
+            x = block(x, mask)
+            print('[TransformerSNP] in forward: passed encoder_blocks {}'.format(i))
+            i = i + 1
+        return x
     
-    embedding_dimension = int(tuning_params['n_heads'] * tuning_params['d_k'])
-    layers = []
-    # Average pooling
-    layers.append(Pooling_Transformer_output())
-    
-    # Feed Forward layer to do regression
-    layers.append(Dropout(tuning_params['dropout']))
-    layers.append(Linear(in_features=embedding_dimension, out_features=1))
+class RegressionBlock(torch.nn.Module):
+    def __init__(self, tuning_params):
+        super(RegressionBlock, self).__init__()
 
-    return Sequential(*layers)
+        print("[RegressionBlock-init]: inside RegressionBlock")
 
-class CombinedModel(torch.nn.Module):
-    def __init__(self, src_vocab_size, tuning_params):
-        super(CombinedModel, self).__init__()
+        embedding_dimension = int(tuning_params['n_heads'] * tuning_params['d_k'])
+        self.pooling_layer = Pooling_Transformer_output()
+        print("[RegressionBlock-init]: passed Pooling_Transformer_output")
 
+        self.dropout = Dropout(tuning_params['dropout'])
+        print("[RegressionBlock-init]: passed Dropout")
+
+        self.linear = Linear(in_features=embedding_dimension, out_features=1)
+        print("[RegressionBlock-init]: passed Linear")
+
+    def forward(self, x):
+        x = self.pooling_layer(x)
+        print("[RegressionBlock-forward]: passed pooling_layer")
+        x = self.dropout(x)
+        print("[RegressionBlock-forward]: passed dropout")
+        x = self.linear(x)
+        print("[RegressionBlock-forward]: passed linear")
+        return x
+
+class EnsembledModel(torch.nn.Module):
+    def __init__(self, src_vocab_size, max_seq_lens, tuning_params):
+        super(EnsembledModel, self).__init__()
+        print("[EnsembledModel-init]: inside EnsembledModel ")
         self.src_vocab_size = src_vocab_size
         self.tuning_params = tuning_params
-
-    def TransformerSNP(self, mask, src_vocab_size, seq_len, tuning_params):
-        """
-        Transformer model with hyperparameter tuning by optuna optimization.
-        """
-        embedding_dimension = int(tuning_params['n_heads'] * tuning_params['d_k'])
-
-        layers = []
-
-        # Transformer model
-        layers.append(embed_layer.Embedding(vocab_size=src_vocab_size, embed_dim=embedding_dimension))
-
-        layers.append(embed_layer.PositionalEncoding(embed_dim=embedding_dimension, max_seq_len=seq_len, dropout=tuning_params['dropout']))
-
-        n_blocks = tuning_params['n_blocks']
-        for block in range(n_blocks):
-            layers.append(encoder.Encoder(mask, embed_dim=embedding_dimension, heads=tuning_params['n_heads'], expansion_factor=tuning_params['mlp_factor'], dropout=tuning_params['dropout']))
-
-        return Sequential(*layers)
-
-    def RegressionBlock(self, tuning_params):
-    
-        embedding_dimension = int(tuning_params['n_heads'] * tuning_params['d_k'])
-        layers = []
-        # Average pooling
-        layers.append(Pooling_Transformer_output())
-        
-        # Feed Forward layer to do regression
-        layers.append(Dropout(tuning_params['dropout']))
-        layers.append(Linear(in_features=embedding_dimension, out_features=1))
-
-        return Sequential(*layers)
+        self.transformer_chr1 = TransformerSNP(src_vocab_size, max_seq_lens[0], tuning_params)
+        print("[EnsembledModel-init]: passed init TransformerSNP")
+        self.transformer_chr2 = TransformerSNP(src_vocab_size, max_seq_lens[1], tuning_params)
+        self.transformer_chr3 = TransformerSNP(src_vocab_size, max_seq_lens[2], tuning_params)
+        self.transformer_chr4 = TransformerSNP(src_vocab_size, max_seq_lens[3], tuning_params)
+        self.transformer_chr5 = TransformerSNP(src_vocab_size, max_seq_lens[4], tuning_params)
+        self.regression_block = RegressionBlock(tuning_params)
     
     # Create mask to ignore Padding token
-    def create_mask_each_chr(self, list_X):
+    def create_mask_list(self, list_X):
         mask_all_chr = []
         for xi in list_X:
-            mask = (xi != 0).astype(np.int32) # Shape: (batch_size, sequence_length)
-            # Reshape the mask to the desired shape: (batch_size, 1, 1, sequence_length)
-            final_mask = mask[:, np.newaxis, np.newaxis, :]  # Shape: (batch_size, 1, 1, sequence_length)
-            mask_tensor = torch.LongTensor(final_mask)
-            mask_all_chr.append(mask_tensor)
+            mask = (xi != 0).int()
+            # final_mask = mask.unsqueeze(1).unsqueeze(2)
+            final_mask = mask[:, np.newaxis, np.newaxis, :]
+            # mask_tensor = torch.LongTensor(final_mask)
+            mask_all_chr.append(final_mask)
+
         return mask_all_chr
     
     # Concatenate each chromosome (output of Transformer) into 1 input for Regression block
-    def Concatenate_chr(self, *args):
+    def concatenate_chr(self, args):
         output = torch.cat(args, 1)
         return output
     
     def forward(self, list_X):
-        print('Start transformer')
+        print('[EnsembledModel] in forward')
+        mask_X = self.create_mask_list(list_X)
+        for i in range(len(mask_X)):
+            print('  + Masking Chr{}: list_X[{}]={} mask_X[{}]={}'.format(i, i, list_X[i].shape, i, mask_X[i].shape))
 
-        list_X_mask = self.create_mask_each_chr(list_X)
+        transformer_output1 = self.transformer_chr1(list_X[0], mask_X[0])
+        transformer_output2 = self.transformer_chr1(list_X[1], mask_X[1])
+        transformer_output3 = self.transformer_chr1(list_X[2], mask_X[2])
+        transformer_output4 = self.transformer_chr1(list_X[3], mask_X[3])
+        transformer_output5 = self.transformer_chr1(list_X[4], mask_X[4])
 
-        transformer_outputs = []
-        for i in range(len(list_X)):
-            transformer_model = self.TransformerSNP(list_X_mask[i], self.src_vocab_size, seq_len=list_X[i].shape[1], tuning_params=self.tuning_params)
-            transformer_output = transformer_model(list_X[i])
-            transformer_outputs.append(transformer_output)
-
-        # transformer_models = torch.nn.ModuleList([
-        #     CombinedModel.TransformerSNP(list_X_mask[i], self.src_vocab_size, seq_len=list_X[i].shape[1], tuning_params=self.tuning_params)
-        #     for i in range(len(list_X))])
-
-        # transformer_outputs = [model(X) for model, X in zip(transformer_models, list_X)]
-
-        concatenated_output = self.Concatenate_chr(*transformer_outputs)
+        concatenated_output = self.concatenate_chr([transformer_output1, transformer_output2, transformer_output3, transformer_output4, transformer_output5])
         concatenated_output = concatenated_output.detach_()
+        print('[EnsembledModel] in forward: passed concatenate_chr')
 
-        regression_model = self.RegressionBlock(tuning_params=self.tuning_params)
-        output = regression_model(concatenated_output)
+        regression_output = self.regression_block(concatenated_output)
+        print('[EnsembledModel] in forward: passed regression_block')
+        output = regression_output.squeeze(1)
 
         return output
+    
 # ==============================================================
 # Define training and validation loop
 # ==============================================================
@@ -211,26 +204,29 @@ class CombinedModel(torch.nn.Module):
 def train_one_epoch(model, train_loader, loss_function, optimizer, device):
     
     model.train()
-    print('Start train_one_epoch')
+    
     # iterate through the train loader
     for i, (inputs, targets) in enumerate(train_loader):
         # inputs, targets = inputs.to(device), targets.to(device)
         # forward pass 
-        print('Start train model')
+        print('[train_one_epoch] start training one epoch')
+
         pred_outputs = model(inputs)
-        exit(1)
-    
-        # print('[train_one_epoch] iter {} - pred_outputs: {}'.format(i, pred_outputs))
+        print('[train_one_epoch] iter {} - passed pred_outputs: {}'.format(i, pred_outputs))
+
         # calculate training loss
         loss_training = loss_function(pred_outputs, targets)
-        # print('[train_one_epoch] iter {} - passed loss_function'.format(i))
+        print('[train_one_epoch] iter {} - passed loss_function'.format(i))
+
         # backward pass and optimization
         optimizer.zero_grad()
-        # print('[train_one_epoch] iter {} - passed optimizer.zero_grad'.format(i))
+        print('[train_one_epoch] iter {} - passed optimizer.zero_grad'.format(i))
+
         loss_training.backward()
-        # print('[train_one_epoch] iter {} - passed backward'.format(i))
+        print('[train_one_epoch] iter {} - passed backward'.format(i))
+
         optimizer.step()
-        # print('[train_one_epoch] iter {} - passed optimizer.step'.format(i))
+        print('[train_one_epoch] iter {} - passed optimizer.step'.format(i))
 
 # Function to validate the model for one epoch
 def validate_one_epoch(model, val_loader, loss_function, device):
@@ -277,35 +273,35 @@ def predict(model, val_loader, device):
 # Function to train model on train loader and evaluate on validation loader
 # also return early_stopping_point
 def train_val_loop(model, training_params, tuning_params, X_train_list, y_train, X_val_list, y_val, device):
+    
     print('Going to train_val_loop')
+
     # transform data to tensor format
     list_tensor_X_train = [torch.from_numpy(item).long() for item in X_train_list]
-    # tensor_X_train = torch.LongTensor(X_train)
     tensor_y_train = torch.Tensor(y_train)
-    # tensor_X_val = torch.LongTensor(X_val)
+   
     list_tensor_X_val = [torch.from_numpy(item).long() for item in X_val_list]
     tensor_y_val = torch.Tensor(y_val)
     
     # squeeze y to get suitable y dims for training Transformer
     tensor_y_train, tensor_y_val = tensor_y_train.view(len(y_train),1), tensor_y_val.view(len(y_val),1)
 
-    # Create the list dataset
+    # create the list dataset
     train_dataset = ListTensorDataset(list_tensor_X_train, y_train)
-    val_dataset = ListTensorDataset(list_tensor_X_val, y_train)
+    val_dataset   = ListTensorDataset(list_tensor_X_val, y_train)
     
     # define data loaders for training and validation data
     # train_loader = DataLoader(dataset=list(zip(X_train, tensor_y_train)), batch_size=training_params['batch_size'], shuffle=True)
     train_loader = DataLoader(train_dataset, batch_size=training_params['batch_size'], shuffle=True)
 
-    # print('Shape of x_train', len(X_train))
-    # print('Shape of y_train', len(tensor_y_train))
-
-    # val_loader   = DataLoader(dataset=list(zip(X_val, tensor_y_val)), batch_size=training_params['batch_size'], shuffle=False)
-    val_loader   = DataLoader(val_dataset, batch_size=training_params['batch_size'], shuffle=False)
+    # val_loader = DataLoader(dataset=list(zip(X_val, tensor_y_val)), batch_size=training_params['batch_size'], shuffle=False)
+    val_loader = DataLoader(val_dataset, batch_size=training_params['batch_size'], shuffle=False)
 
     # define loss function and optimizer
     loss_function = torch.nn.MSELoss()
+    print('[train_val_loop] Start optim.Adam')
     optimizer = torch.optim.Adam(params=model.parameters(), lr=tuning_params['learning_rate'], weight_decay=tuning_params['weight_decay'])
+    print('[train_val_loop] Passed optim.Adam')
     
     for name, param in model.named_parameters():
         if param.requires_grad:
@@ -349,6 +345,7 @@ def train_val_loop(model, training_params, tuning_params, X_train_list, y_train,
             model = best_model
             y_pred = predict(model, val_loader, device)
             return y_pred, early_stopping_point
+    
     # return the best predicted values
     y_pred = predict(best_model, val_loader, device)
     return y_pred, early_stopping_point
@@ -369,11 +366,6 @@ def objective(trial, list_X_train, src_vocab_size, y, data_variants, training_pa
         'dropout': trial.suggest_float('dropout', 0.1, 0.5, step=0.05)
     }
 
-    # extract preprocessed data variants for tuning
-    # minmax_scaler_mode = data_variants[0]
-    # standard_scaler_mode = data_variants[1]
-    # pca_fitting_mode = data_variants[2]
-
     # log early stopping point at each fold
     early_stopping_points = []
     
@@ -387,37 +379,8 @@ def objective(trial, list_X_train, src_vocab_size, y, data_variants, training_pa
     first_obj_values = []
     second_obj_values = []
 
-    # list_X_mask = create_mask_each_chr(list_X_train)
-
-    # seq_len = X_train.shape[1]
-    # chr1_model = TransformerSNP(list_X_mask[0], src_vocab_size, seq_len=list_X_train[0].shape[1], tuning_params=tuning_params_dict).to(device)
-    # chr2_model = TransformerSNP(list_X_mask[1], src_vocab_size, seq_len=list_X_train[1].shape[1], tuning_params=tuning_params_dict).to(device)
-    # chr3_model = TransformerSNP(list_X_mask[2], src_vocab_size, seq_len=list_X_train[2].shape[1], tuning_params=tuning_params_dict).to(device)
-    # chr4_model = TransformerSNP(list_X_mask[3], src_vocab_size, seq_len=list_X_train[3].shape[1], tuning_params=tuning_params_dict).to(device)
-    # chr5_model = TransformerSNP(list_X_mask[4], src_vocab_size, seq_len=list_X_train[4].shape[1], tuning_params=tuning_params_dict).to(device)
-
-    # chr1_output, chr2_output, chr3_output, chr4_output, chr5_output = chr1_model(torch.LongTensor(list_X_train[0])), chr2_model(torch.LongTensor(list_X_train[1])), chr3_model(torch.LongTensor(list_X_train[2])), chr4_model(torch.LongTensor(list_X_train[3])), chr5_model(torch.LongTensor(list_X_train[4]))
-
-    # X = Concatenate_chr(chr1_output, chr2_output, chr3_output, chr4_output, chr5_output)
-    # X = X.detach_()
-
-    # try:
-    #     # model = RegressionBlock(tuning_params=tuning_params_dict).to(device)
-    #     model = CombinedModel(list_X_mask, src_vocab_size, list_X_train, tuning_params_dict).to(device)
-    # except Exception as err:
-    #     print('Trial failed. Error in model creation, {}'.format(err))
-    #     raise optuna.exceptions.TrialPruned()
-
     # forl cross-validation kfolds, default = 5 folds
     kfold = KFold(n_splits=5, shuffle=True, random_state=42)
-    # main loop with cv-folding
-    # for fold, (train_ids, val_ids) in enumerate(kfold.split(X, y)):
-    #     # prepare data for training and validating in each fold
-    #     print('Fold {}: num_train_ids={}, num_val_ids={}'.format(fold, len(train_ids), len(val_ids)))
-    #     X_train, y_train, X_val, y_val = X[train_ids], y[train_ids], X[val_ids], y[val_ids]
-
-    # for fold, (train_ids, val_ids) in enumerate(kfold.split(range(len(y)))):
-    #     print(f'Fold {fold}: num_train_ids={len(train_ids)}, num_val_ids={len(val_ids)}')
         
     # Split the data into train and validation sets for all chromosomes at once
     all_folds = [kfold.split(X_chr) for X_chr in list_X_train]
@@ -427,7 +390,7 @@ def objective(trial, list_X_train, src_vocab_size, y, data_variants, training_pa
         X_train_list = []
         X_val_list = []
 
-        print(f"Fold {fold}:")
+        print("Preprocessing Fold No.{}: ".format(fold))
         for i, (train_ids, val_ids) in enumerate(fold_indices, start=1):
             
             X_chr = list_X_train[i-1]
@@ -436,13 +399,17 @@ def objective(trial, list_X_train, src_vocab_size, y, data_variants, training_pa
             X_train_list.append(X_train)
             X_val_list.append(X_val)
 
-        print('Done step splitting train and')
+        # get the max sequence length of each chrobosome
+        max_seq_lens = []
+        for i in range(len(X_train_list)):
+            max_seq_lens.append(X_train_list[i].shape[1])
+        print("Max sequence lengths of each chrobosome: {} ".format(max_seq_lens))
 
-        # create model
-        # seq_len = X_train.shape[1]
         try:
             # model = RegressionBlock(tuning_params=tuning_params_dict).to(device)
-            model = CombinedModel(src_vocab_size, tuning_params=tuning_params_dict).to(device)
+            model = EnsembledModel(src_vocab_size, max_seq_lens, tuning_params_dict).to(device)
+            print("Passed create EnsembledModel")
+
         except Exception as err:
             print('Trial failed. Error in model creation, {}'.format(err))
             raise optuna.exceptions.TrialPruned()
@@ -487,7 +454,6 @@ def objective(trial, list_X_train, src_vocab_size, y, data_variants, training_pa
     early_stopping_point = int(np.mean(early_stopping_points))
     print('----------------------------------------------')
     print("Average early_stopping_point: {}| avg_exp_var={:.5f}| avg_loss={:.5f}".format(early_stopping_point, current_val_expv, current_val_loss))
-
     print('----------------------------------------------\n')
 
     # try to return avg stop epochs for a specific trial 

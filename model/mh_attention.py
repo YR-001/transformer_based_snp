@@ -7,7 +7,7 @@ import math
 
 class MultiHeadAttention(nn.Module):
 
-    def __init__(self, mask, d_model: int, heads: int, dropout: float):
+    def __init__(self, d_model: int, heads: int, dropout: float):
         """
         Multi-Head Attention class
         :param embed_dim: the embedding dimension
@@ -15,7 +15,6 @@ class MultiHeadAttention(nn.Module):
         """
         super(MultiHeadAttention, self).__init__()
 
-        self.mask = mask
         self.d_model = d_model # 512 by default
         self.heads = heads #8 by default
         
@@ -54,7 +53,7 @@ class MultiHeadAttention(nn.Module):
             
         return (attention_scores @ value), attention_scores # Multiply the output matrix by the V matrix, as in the formula
 
-    def forward(self, x):
+    def forward(self, x, mask):
 
         # Input of size: batch_size x sequence length x embedding dims
         # batch_size, seq_len, d_model = x.shape
@@ -71,7 +70,7 @@ class MultiHeadAttention(nn.Module):
         value = value.view(value.shape[0], value.shape[1], self.heads, self.d_k).transpose(1,2) # Transpose => bring the head to the second dimension
 
         # Obtaining the output and the attention scores
-        x, self.attention_scores = MultiHeadAttention.attention(query, key, value, self.dropout, mask=self.mask)
+        x, self.attention_scores = MultiHeadAttention.attention(query, key, value, self.dropout, mask)
         
         # Obtaining the H matrix
         # (batch, h, seq_len, d_k) --> (batch, seq_len, h, d_k) --> (batch, seq_len, d_model)
